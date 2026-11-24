@@ -4,11 +4,12 @@
 // floating Liquid Glass tab bar need it.
 //
 // The data model uses the same JSON as the web app's backup file, so a backup saved from the web
-// version can be picked in Settings > Back up > Import from Files (or opened from the Files app) and it just works.
+// version can be pasted into Settings > Back up > Import and it just works.
 
 import SwiftUI
 import Charts
 import Observation
+import PhotosUI
 import UniformTypeIdentifiers
 
 // MARK: - Dates (plain calendar math, so there are no time zone surprises)
@@ -281,6 +282,101 @@ struct Cash: Codable, Hashable {
     var followOff: Cash { var c = self; c.follow = false; return c }
 }
 
+// MARK: - Appearance: saved with each budget, and not part of the backup file
+
+enum LookKind: String, Codable { case flat, glass }
+
+enum SwitchKind: String, Codable, CaseIterable, Identifiable {
+    case classic, check, orb, sun, soft
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .classic: return "Classic"
+        case .check: return "Check and X"
+        case .orb: return "Glow"
+        case .sun: return "Sun and ring"
+        case .soft: return "Soft ring"
+        }
+    }
+    var detail: String {
+        switch self {
+        case .classic: return "The standard switch"
+        case .check: return "Green with a check, red with an X"
+        case .orb: return "A glowing green light, a dim red one"
+        case .sun: return "A bright sun when on, a ring when off"
+        case .soft: return "A solid dot when on, a ring when off"
+        }
+    }
+}
+
+struct ThemeColors: Codable, Hashable {
+    var preset: String = "cyan"            // "custom" once you pick your own
+    var brand: String = "#2ebfd9"          // bills, headings, the tint
+    var primary: String = "#0e7c91"        // bars, charts, spending
+    var accent: String = "#fdcb2f"         // money in
+
+    init() {}
+    init(preset: String, brand: String, primary: String, accent: String) {
+        self.preset = preset; self.brand = brand; self.primary = primary; self.accent = accent
+    }
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        preset = (try? c.decodeIfPresent(String.self, forKey: .preset)) ?? "cyan"
+        brand = (try? c.decodeIfPresent(String.self, forKey: .brand)) ?? "#2ebfd9"
+        primary = (try? c.decodeIfPresent(String.self, forKey: .primary)) ?? "#0e7c91"
+        accent = (try? c.decodeIfPresent(String.self, forKey: .accent)) ?? "#fdcb2f"
+    }
+
+    struct Preset: Identifiable {
+        let id: String
+        let name: String
+        let brand: String
+        let primary: String
+        let accent: String
+    }
+
+    static let presets: [Preset] = [
+        Preset(id: "cyan", name: "Cyan", brand: "#2ebfd9", primary: "#0e7c91", accent: "#fdcb2f"),
+        Preset(id: "ocean", name: "Ocean", brand: "#5ba8f5", primary: "#1d5fae", accent: "#ffb547"),
+        Preset(id: "forest", name: "Forest", brand: "#6fcf97", primary: "#1f7a4d", accent: "#f2c94c"),
+        Preset(id: "sunset", name: "Sunset", brand: "#ff9f6b", primary: "#b8431c", accent: "#ffd166"),
+        Preset(id: "berry", name: "Berry", brand: "#e58bc0", primary: "#9b2c6f", accent: "#ffd84d"),
+        Preset(id: "graphite", name: "Graphite", brand: "#a8b3bd", primary: "#374151", accent: "#facc15")
+    ]
+}
+
+struct WallpaperSettings: Codable, Hashable {
+    var fileName: String? = nil            // the picture lives in Application Support/wallpapers
+    var dim: Double = 0.3
+    var blur: Double = 0
+
+    init() {}
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        fileName = try? c.decodeIfPresent(String.self, forKey: .fileName)
+        dim = min(max((try? c.decodeIfPresent(Double.self, forKey: .dim)) ?? 0.3, 0), 0.8)
+        blur = min(max((try? c.decodeIfPresent(Double.self, forKey: .blur)) ?? 0, 0), 30)
+    }
+}
+
+struct Theme: Codable, Hashable {
+    var colors = ThemeColors()
+    var look: LookKind = .glass
+    var switchKind: SwitchKind = .classic
+    var wallpaper = WallpaperSettings()
+
+    init() {}
+
+    init(from decoder: Decoder) throws {
+        let c = try decoder.container(keyedBy: CodingKeys.self)
+        // forgiving on purpose: a value this version does not know must never stop the budget from opening
+        colors = (try? c.decodeIfPresent(ThemeColors.self, forKey: .colors)) ?? ThemeColors()
+        look = (try? c.decodeIfPresent(LookKind.self, forKey: .look)) ?? .glass
+        switchKind = (try? c.decodeIfPresent(SwitchKind.self, forKey: .switchKind)) ?? .classic
+        wallpaper = (try? c.decodeIfPresent(WallpaperSettings.self, forKey: .wallpaper)) ?? WallpaperSettings()
+    }
+}
+
 struct Budget: Identifiable, Codable {
     var id: String = UUID().uuidString
     var name: String
@@ -289,9 +385,9 @@ struct Budget: Identifiable, Codable {
     var loans: [Loan] = []
     var cash = Cash()
     var isSample = false
-    var lastBackup: String? = nil                 // the day this budget was last saved to Files ("2026-11-24")
+    var theme = Theme()
 
-    enum CodingKeys: String, CodingKey { case id, name, items, paid = "pay", loans, cash, isSample = "sample", lastBackup }
+    enum CodingKeys: String, CodingKey { case id, name, items, paid = "pay", loans, cash, isSample = "sample", theme }
 
     init(id: String = UUID().uuidString, name: String) { self.id = id; self.name = name }
 
@@ -304,7 +400,7 @@ struct Budget: Identifiable, Codable {
         loans = try c.decodeIfPresent([Loan].self, forKey: .loans) ?? []
         cash = try c.decodeIfPresent(Cash.self, forKey: .cash) ?? Cash()
         isSample = try c.decodeIfPresent(Bool.self, forKey: .isSample) ?? false
-        lastBackup = try c.decodeIfPresent(String.self, forKey: .lastBackup)
+        theme = (try? c.decodeIfPresent(Theme.self, forKey: .theme)) ?? Theme()
     }
 }
 
@@ -753,6 +849,59 @@ extension Budget {
     }
 }
 
+// MARK: - Easy mode helpers (the same plain words as the web app)
+
+/// "Due Fri, Nov 27", "Due tomorrow", "Late. It was due Sun, Nov 1" ...
+func easyWhen(_ due: YMD, income: Bool) -> (text: String, late: Bool, soon: Bool) {
+    let d = due.dayNumber - YMD.today.dayNumber
+    if income {
+        if d < 0 { return ("Not received yet. It was expected \(due.nice)", false, true) }
+        if d == 0 { return ("Expected today", false, true) }
+        if d == 1 { return ("Expected tomorrow", false, false) }
+        return ("Expected \(due.nice)", false, false)
+    }
+    if d < -1 { return ("Late. It was due \(due.nice)", true, false) }
+    if d == -1 { return ("Late. It was due yesterday", true, false) }
+    if d == 0 { return ("Due today", false, true) }
+    if d == 1 { return ("Due tomorrow", false, true) }
+    return ("Due \(due.nice)", false, d <= 3)
+}
+
+extension Budget {
+    /// The bill to do next: the oldest late one, else the next unpaid one that does not pay itself.
+    func easyNext(in ym: YM) -> (late: [BillRow], next: BillRow?) {
+        let t = YMD.today
+        let needs = rows(in: ym).filter { !$0.isPaid && $0.item.type == .bill && !$0.item.automatic }
+        let late = needs.filter { $0.due < t }
+        return (late, late.first ?? needs.first { $0.due >= t })
+    }
+
+    /// How the account looks, in plain words. Nil when no balance is set yet.
+    func easyAccount(_ m: CashModel) -> (headline: String, detail: String, health: Health)? {
+        guard m.real else { return nil }
+        let lowCol = m.cols[m.lowIndex]
+        let when = lowCol.due.map { "on \($0.short)" } ?? "early in the month"
+        var until = ""
+        if let b = m.dip?.back, let d = b.due { until = " until \(b.name) on \(d.short)" }
+        if m.below0 { return ("You may run short", "Your balance could go below $0 (\(money(m.low))) \(when)\(until).", .red) }
+        if m.under { return ("Watch your balance", "It gets low, about \(money(m.low)), \(when)\(until).", .amber) }
+        return ("You should be fine", "About \(money(m.end)) should be left at the end of the month.", .green)
+    }
+}
+
+extension Budget {
+    /// Easy mode: "Paying this lowers your Car loan." for a bill that moves a loan or card.
+    func linkWords(for it: Item) -> String? {
+        guard it.type == .bill else { return nil }
+        for l in loans where Budget.isLinked(l) {
+            if l.payBill == it.id { return "Paying this lowers your \(l.name)." }
+            let acct = it.account.trimmingCharacters(in: .whitespaces).lowercased()
+            if l.isCard && !acct.isEmpty && l.accounts.contains(where: { $0.trimmingCharacters(in: .whitespaces).lowercased() == acct }) { return "This is charged to your \(l.name)." }
+        }
+        return nil
+    }
+}
+
 // MARK: - The store: saving, automatic payments, and every change the screens make
 
 enum SheetKind: Identifiable {
@@ -760,6 +909,10 @@ enum SheetKind: Identifiable {
     case startBalance
     case loan(Loan?)            // nil = a new loan or card
     case importBackup
+    case theme                  // Wallpaper and colors
+    case manageBudgets
+    case allItems               // Edit items
+    case about
 
     var id: String {
         switch self {
@@ -767,44 +920,21 @@ enum SheetKind: Identifiable {
         case .startBalance: return "start"
         case .loan(let l): return "loan-\(l?.id ?? "new")"
         case .importBackup: return "import"
+        case .theme: return "theme"
+        case .manageBudgets: return "budgets"
+        case .allItems: return "items"
+        case .about: return "about"
         }
     }
 }
 
 enum AppInfo {
-    /// The version set in the target (MARKETING_VERSION), so the app and App Store Connect always agree.
-    static var version: String { Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "2.1" }
-}
-
-/// A backup read from a file or pasted text, waiting for the person to say what to do with it.
-struct PendingImport {
-    var name: String
-    var source: String
-    var items: [Item]
-    var pay: [String: Pay]
-    var loans: [Loan]
-    var cash: Cash?
-}
-
-/// The backup as a file for the Files app's Save sheet.
-struct BackupDocument: FileDocument {
-    static var readableContentTypes: [UTType] { [.json] }
-    var data: Data
-    init(data: Data) { self.data = data }
-    init(configuration: ReadConfiguration) throws { data = configuration.file.regularFileContents ?? Data() }
-    func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper { FileWrapper(regularFileWithContents: data) }
-}
-
-/// The backup as a file for the share sheet (AirDrop, Messages, Mail, Save to Files).
-struct BackupFile: Transferable, Sendable {
-    var fileName: String                  // with .json
-    var data: Data
-    static var transferRepresentation: some TransferRepresentation {
-        FileRepresentation(exportedContentType: .json) { file in
-            let url = URL.temporaryDirectory.appending(path: file.fileName)
-            try file.data.write(to: url, options: .atomic)
-            return SentTransferredFile(url)
-        }
+    /// "2.0 (12)": the version, and the build number Xcode Cloud gave this build.
+    static var version: String {
+        let info = Bundle.main.infoDictionary
+        let v = info?["CFBundleShortVersionString"] as? String ?? "2.0"
+        guard let b = info?["CFBundleVersion"] as? String else { return v }
+        return "\(v) (\(b))"
     }
 }
 
@@ -816,6 +946,8 @@ final class BudgetStore {
     var sheet: SheetKind?
     var toast: String?
     var revision = 0                                  // goes up on every change, so the charts know to redraw
+    var menuOpen = false                              // the slide-out menu on the left
+    var detailDepth = 0                               // how many screens are pushed, so the menu's edge swipe stays out of the way
 
     @ObservationIgnored private var toastTask: Task<Void, Never>?
     @ObservationIgnored private let fileURL: URL
@@ -828,6 +960,10 @@ final class BudgetStore {
         if let data = try? Data(contentsOf: url), let lib = try? JSONDecoder().decode(Library.self, from: data), !lib.budgets.isEmpty {
             library = lib
         } else {
+            if FileManager.default.fileExists(atPath: url.path) {      // a file that cannot be read is kept, never silently overwritten
+                let keep = dir.appending(path: "tapbudget-unreadable-\(Int(Date().timeIntervalSince1970)).json")
+                try? FileManager.default.copyItem(at: url, to: keep)
+            }
             let b = Budget.example()
             library = Library(budgets: [b], activeID: b.id)
         }
@@ -869,7 +1005,9 @@ final class BudgetStore {
     func switchBudget(_ id: String) { library.activeID = id; save() }
 
     func addBudget(named name: String) {
-        let b = Budget(name: name.isEmpty ? "New budget" : name)
+        var b = Budget(name: name.isEmpty ? "New budget" : name)
+        b.theme = budget.theme                         // a new budget starts with the look that was showing
+        b.theme.wallpaper = WallpaperSettings()
         library.budgets.append(b)
         library.activeID = b.id
         save()
@@ -884,11 +1022,22 @@ final class BudgetStore {
 
     func renameBudget(_ name: String) { update { $0.name = name.isEmpty ? $0.name : name } }
 
-    func deleteBudget() {
+    func deleteBudget() { deleteBudget(id: library.activeID) }
+
+    func deleteBudget(id: String) {
         guard library.budgets.count > 1 else { return }
-        library.budgets.removeAll { $0.id == library.activeID }
-        library.activeID = library.budgets[0].id
+        library.budgets.removeAll { $0.id == id }
+        if !library.budgets.contains(where: { $0.id == library.activeID }) { library.activeID = library.budgets[0].id }
         save()
+    }
+
+    func setTheme(_ change: (inout Theme) -> Void) { update { change(&$0.theme) } }
+
+    /// The active budget as a file in the temporary folder, ready to share.
+    func backupFileURL() -> URL? {
+        let safe = budget.name.filter { $0.isLetter || $0.isNumber || $0 == " " }.replacingOccurrences(of: " ", with: "-")
+        let url = FileManager.default.temporaryDirectory.appending(path: "TapBudget-\(safe.isEmpty ? "backup" : safe).json")
+        do { try exportJSON().write(to: url, atomically: true, encoding: .utf8); return url } catch { return nil }
     }
 
     // MARK: Items and payments
@@ -991,138 +1140,40 @@ final class BudgetStore {
         say("\(loan.name) is now \(money(balance)).")
     }
 
-    // MARK: Backup files (the same JSON the web app saves, one budget per file)
-
-    var pendingImport: PendingImport?
-
-    /// Decodes one entry and keeps going if it is broken, so one bad bill does not sink the whole file.
-    private struct Lenient<T: Decodable>: Decodable {
-        let value: T?
-        init(from decoder: Decoder) { value = try? T(from: decoder) }
-    }
+    // MARK: Backup (the web app's JSON)
 
     private struct Backup: Decodable {
         var name: String?
-        var items: [Lenient<Item>]?
-        var pay: [String: Lenient<Pay>]?
-        var loans: [Lenient<Loan>]?
-        var cash: Lenient<Cash>?
+        var items: [Item]?
+        var pay: [String: Pay]?
+        var loans: [Loan]?
+        var cash: Cash?
     }
 
-    private static let notABackup = "That doesn’t look like a TapBudget backup."
-
-    func backupData() -> Data {
+    func exportJSON() -> String {
         struct Out: Encodable { var app = "budget-tracker"; var version = 2; var name: String; var items: [Item]; var pay: [String: Pay]; var loans: [Loan]; var cash: Cash }
         let b = budget
         let e = JSONEncoder()
         e.outputFormatting = [.prettyPrinted, .sortedKeys]
-        return (try? e.encode(Out(name: b.name, items: b.items, pay: b.paid, loans: b.loans, cash: b.cash))) ?? Data("{}".utf8)
+        guard let data = try? e.encode(Out(name: b.name, items: b.items, pay: b.paid, loans: b.loans, cash: b.cash)) else { return "{}" }
+        return String(decoding: data, as: UTF8.self)
     }
 
-    /// "budget-household-2026-11-24", the same name the web app gives its backup files (no extension).
-    var backupBaseName: String {
-        let lower = budget.name.lowercased()
-        var slug = lower.replacingOccurrences(of: "[^a-z0-9]+", with: "-", options: .regularExpression)
-        slug = slug.trimmingCharacters(in: CharacterSet(charactersIn: "-"))
-        if slug.isEmpty { slug = "budget" }
-        return "budget-\(slug.prefix(40))-\(YMD.today.iso)"
-    }
-
-    var backupFile: BackupFile { BackupFile(fileName: backupBaseName + ".json", data: backupData()) }
-
-    func markBackedUp() { update { $0.lastBackup = YMD.today.iso } }
-
-    /// Reads a backup and holds it for the confirm step. Nothing changes yet. Returns an error message, or nil.
-    @discardableResult
-    func stageBackup(_ data: Data, fileName: String? = nil) -> String? {
-        guard data.count < 5_000_000 else { return "That file is too big to be a TapBudget backup." }
-        guard let backup = try? JSONDecoder().decode(Backup.self, from: data) else { return Self.notABackup }
-        let items = (backup.items ?? []).compactMap { $0.value }.filter { !$0.id.isEmpty && $0.amount >= 0 }
-        let loans = (backup.loans ?? []).compactMap { $0.value }.filter { !$0.id.isEmpty && $0.total >= 0 && $0.balance >= 0 }
-        guard !items.isEmpty || !loans.isEmpty else { return Self.notABackup }
-        let ids = Set(items.map { $0.id })
-        var pay: [String: Pay] = [:]
-        for (k, v) in backup.pay ?? [:] { if let p = v.value, ids.contains(p.item) { pay[k] = p } }
-        let given = (backup.name ?? "").trimmingCharacters(in: .whitespacesAndNewlines)
-        let name = String((given.isEmpty ? (Self.nameFromFile(fileName) ?? "Imported budget") : given).prefix(60))
-        pendingImport = PendingImport(name: name, source: fileName ?? "pasted text", items: items, pay: pay, loans: loans, cash: backup.cash?.value)
-        return nil
-    }
-
-    /// Pasted text: copes with the quote marks Excel adds and the curly quotes some apps swap in.
-    func stageBackup(text: String) -> String? {
-        var t = text.trimmingCharacters(in: .whitespacesAndNewlines)
-        if t.count > 1, t.hasPrefix("\""), t.hasSuffix("\""), t.contains("\"\"") {
-            t = String(t.dropFirst().dropLast()).replacingOccurrences(of: "\"\"", with: "\"")
+    /// Adds the pasted backup as a new budget. Returns an error message, or nil if it worked.
+    func importBackup(_ text: String) -> String? {
+        guard let data = text.trimmingCharacters(in: .whitespacesAndNewlines).data(using: .utf8),
+              let backup = try? JSONDecoder().decode(Backup.self, from: data), let items = backup.items else {
+            return "That does not look like a TapBudget backup."
         }
-        if t.isEmpty { return "Paste the text of a backup file first." }
-        guard t.hasPrefix("{") else {
-            if t.contains("b=") { return "That is a share link. In the web app, choose Save a backup file, then import that file here." }
-            return Self.notABackup
-        }
-        if stageBackup(Data(t.utf8)) == nil { return nil }
-        let straight = t.replacingOccurrences(of: "\u{201C}", with: "\"").replacingOccurrences(of: "\u{201D}", with: "\"")
-        return stageBackup(Data(straight.utf8))
-    }
-
-    /// A file picked in Files, or handed over by another app (Open in TapBudget).
-    func stageBackupFile(_ url: URL) -> String? {
-        let scoped = url.startAccessingSecurityScopedResource()
-        defer {
-            if scoped { url.stopAccessingSecurityScopedResource() }
-            // iOS copies a file another app hands over into Documents/Inbox. It holds personal data, so it is not kept.
-            if url.path.contains("/Documents/Inbox/") { try? FileManager.default.removeItem(at: url) }
-        }
-        guard let data = try? Data(contentsOf: url) else { return "That file couldn’t be opened." }
-        return stageBackup(data, fileName: url.lastPathComponent)
-    }
-
-    /// "budget-household-2026-11-24.json" -> "Household", used when the file has no name inside it.
-    private static func nameFromFile(_ fileName: String?) -> String? {
-        guard var s = fileName, !s.isEmpty else { return nil }
-        if s.lowercased().hasSuffix(".json") { s.removeLast(5) }
-        if s.hasPrefix("budget-") { s.removeFirst(7) }
-        if let r = s.range(of: "-\\d{4}-\\d{2}-\\d{2}$", options: .regularExpression) { s.removeSubrange(r) }
-        s = s.replacingOccurrences(of: "[-_]+", with: " ", options: .regularExpression).trimmingCharacters(in: .whitespaces)
-        return s.isEmpty ? nil : s.capitalized
-    }
-
-    /// A budget here with the same name as the backup, which the person can choose to replace.
-    func matchingBudget(for p: PendingImport) -> Budget? {
-        library.budgets.first { $0.name.lowercased() == p.name.lowercased() }
-    }
-
-    /// Adds the staged backup as a new budget, or swaps it into an existing one.
-    func applyImport(replacing targetID: String? = nil) {
-        guard let p = pendingImport else { return }
-        if let targetID, let i = library.budgets.firstIndex(where: { $0.id == targetID }) {
-            library.budgets[i].items = p.items
-            library.budgets[i].paid = p.pay
-            library.budgets[i].loans = p.loans
-            if let c = p.cash { library.budgets[i].cash = c }
-            library.budgets[i].isSample = false
-            library.activeID = targetID
-            say("Replaced “\(library.budgets[i].name)” with the backup.")
-        } else {
-            let taken = Set(library.budgets.map { $0.name.lowercased() })
-            var label = p.name
-            if taken.contains(label.lowercased()) {
-                var n = 2
-                while taken.contains("\(p.name) (\(n))".lowercased()) { n += 1 }
-                label = "\(p.name) (\(n))"
-            }
-            var b = Budget(name: label)
-            b.items = p.items
-            b.paid = p.pay
-            b.loans = p.loans
-            b.cash = p.cash ?? Cash()
-            library.budgets.append(b)
-            library.activeID = b.id
-            say("Added “\(label)” with \(p.items.count) items.")
-        }
-        pendingImport = nil
+        var b = Budget(name: backup.name ?? "Imported budget")
+        b.items = items
+        b.paid = backup.pay ?? [:]
+        b.loans = backup.loans ?? []
+        b.cash = backup.cash ?? Cash()
+        library.budgets.append(b)
+        library.activeID = b.id
         save()
-        applyAutoPay()
+        return nil
     }
 }
 
@@ -1190,20 +1241,33 @@ extension Budget {
 // MARK: - Shared look: Liquid Glass on the controls that float, plain cards for the content
 
 struct Backdrop: View {
+    @Environment(BudgetStore.self) private var store
+    @Environment(\.palette) private var palette
+
     var body: some View {
-        LinearGradient(colors: [Color.teal.opacity(0.30), Color.cyan.opacity(0.10), Color(uiColor: .systemBackground)],
-                       startPoint: .top, endPoint: .center)
-            .ignoresSafeArea()
+        let w = store.budget.theme.wallpaper
+        ZStack {
+            LinearGradient(colors: [palette.brand.opacity(0.30), palette.brand.opacity(0.10), Color(uiColor: .systemBackground)],
+                           startPoint: .top, endPoint: .center)
+            if let name = w.fileName, let img = WallpaperFiles.image(name) {
+                Color.clear
+                    .overlay(Image(uiImage: img).resizable().scaledToFill().blur(radius: w.blur))
+                    .clipped()
+                    .overlay(Color.black.opacity(w.dim))
+            }
+        }
+        .ignoresSafeArea()
     }
 }
 
 struct CardSurface: ViewModifier {
     let glass: Bool
+    @Environment(\.palette) private var palette
     @ViewBuilder func body(content: Content) -> some View {
         if glass {
-            content.glassEffect(.regular, in: .rect(cornerRadius: 26))
+            content.surface(RoundedRectangle(cornerRadius: 26))
         } else {
-            content.background(Color(uiColor: .secondarySystemGroupedBackground), in: .rect(cornerRadius: 26))
+            content.background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 26))
         }
     }
 }
@@ -1238,7 +1302,7 @@ struct HealthPill: View {
             .font(.subheadline.weight(.semibold))
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .glassEffect(.regular.tint(h.color.opacity(0.35)), in: .capsule)
+            .surface(Capsule(), tint: h.color.opacity(0.35))
     }
 }
 
@@ -1265,27 +1329,14 @@ struct MonthBar: View {
                 }
                 .buttonStyle(.plain)
                 .padding(4)
-                .glassEffect(.regular, in: .capsule)
+                .surface(Capsule())
                 Button("Today") { store.viewing = .current }
-                    .buttonStyle(.glass)
+                    .themedButton()
                 HealthPill()
             }
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 6)
-    }
-}
-
-struct BudgetMenu: View {
-    @Environment(BudgetStore.self) private var store
-    var body: some View {
-        Menu {
-            Picker("Budget", selection: Binding(get: { store.library.activeID }, set: { store.switchBudget($0) })) {
-                ForEach(store.library.budgets) { b in Text(b.name).tag(b.id) }
-            }
-        } label: {
-            Label(store.budget.name, systemImage: "rectangle.stack")
-        }
     }
 }
 
@@ -1298,7 +1349,9 @@ struct BudgetChrome: ViewModifier {
             .navigationTitle(title)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
-                ToolbarItem(placement: .topBarLeading) { BudgetMenu() }
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { store.menuOpen = true } label: { Label("Menu", systemImage: "line.3.horizontal") }
+                }
                 ToolbarItem(placement: .topBarTrailing) {
                     Button { store.sheet = .item(nil) } label: { Label("Add an item", systemImage: "plus") }
                 }
@@ -1319,7 +1372,7 @@ struct ToastView: View {
             .multilineTextAlignment(.center)
             .padding(.horizontal, 18)
             .padding(.vertical, 12)
-            .glassEffect(.regular, in: .capsule)
+            .surface(Capsule())
             .padding(.bottom, 96)
             .padding(.horizontal, 24)
             .transition(.move(edge: .bottom).combined(with: .opacity))
@@ -1327,16 +1380,49 @@ struct ToastView: View {
     }
 }
 
-// MARK: - Root: five tabs, always all visible (the iOS 27 SDK crashes if a TabView selection points at a hidden tab)
+// MARK: - Root: the full app (five tabs, always all visible, because the iOS 27 SDK crashes if a TabView selection points at a hidden tab)
+// or Easy mode (four big buttons). The slide-out menu sits on top of the full app.
 
 enum AppTab: Hashable { case overview, bills, spending, insights, settings }
 
+enum SchemeChoice: String, CaseIterable, Identifiable {
+    case auto, light, dark
+    var id: String { rawValue }
+    var title: String { rawValue.capitalized }
+    var scheme: ColorScheme? { self == .light ? .light : self == .dark ? .dark : nil }
+}
+
 struct ContentView: View {
+    @Environment(BudgetStore.self) private var store
+    @AppStorage("schemeChoice") private var schemeChoice: SchemeChoice = .auto
+    @AppStorage("easyMode") private var easyMode = false
+
+    var body: some View {
+        @Bindable var store = store
+        let palette = Palette(store.budget.theme)
+        ZStack {
+            if easyMode { EasyRoot() } else { FullTabs() }
+        }
+        .overlay { if !easyMode { MenuOverlay() } }
+        .overlay(alignment: .bottom) {
+            if let text = store.toast { ToastView(text: text) }
+        }
+        .animation(.snappy, value: store.toast)
+        .themed(palette)
+        .preferredColorScheme(schemeChoice.scheme)
+        .sheet(item: $store.sheet) { kind in
+            SheetRouter(kind: kind)
+                .themed(palette)
+                .preferredColorScheme(schemeChoice.scheme)
+        }
+    }
+}
+
+struct FullTabs: View {
     @Environment(BudgetStore.self) private var store
     @State private var tab: AppTab = .overview
 
     var body: some View {
-        @Bindable var store = store
         TabView(selection: $tab) {
             Tab("Overview", systemImage: "gauge.with.dots.needle.50percent", value: AppTab.overview) {
                 OverviewTab(go: { tab = $0 })
@@ -1355,18 +1441,19 @@ struct ContentView: View {
             }
         }
         .tabBarMinimizeBehavior(.onScrollDown)
-        .sheet(item: $store.sheet) { kind in
-            SheetRouter(kind: kind)
+        .overlay(alignment: .leading) { edgeStrip }
+    }
+
+    /// A thin strip on the left edge: swipe right from it to open the menu (not while a detail screen is open, where the same swipe means "back").
+    @ViewBuilder private var edgeStrip: some View {
+        if store.detailDepth == 0 && !store.menuOpen {
+            Color.clear
+                .frame(width: 16)
+                .contentShape(Rectangle())
+                .gesture(DragGesture(minimumDistance: 12).onEnded { v in
+                    if v.translation.width > 40 { store.menuOpen = true }
+                })
         }
-        .onOpenURL { url in
-            // a backup file opened with TapBudget from Files, Mail, AirDrop or Messages
-            guard url.isFileURL else { return }
-            if let e = store.stageBackupFile(url) { store.say(e) } else { store.sheet = .importBackup }
-        }
-        .overlay(alignment: .bottom) {
-            if let text = store.toast { ToastView(text: text) }
-        }
-        .animation(.snappy, value: store.toast)
     }
 }
 
@@ -1378,6 +1465,10 @@ struct SheetRouter: View {
         case .startBalance: StartBalanceSheet()
         case .loan(let loan): LoanForm(editing: loan)
         case .importBackup: ImportSheet()
+        case .theme: ThemeSheet()
+        case .manageBudgets: ManageBudgetsSheet()
+        case .allItems: ItemsListSheet()
+        case .about: AboutSheet()
         }
     }
 }
@@ -1424,7 +1515,7 @@ struct RingChip: View {
             Text(title).font(.footnote.weight(.semibold))
         }
         .padding(14)
-        .glassEffect(.regular, in: .rect(cornerRadius: 24))
+        .surface(RoundedRectangle(cornerRadius: 24))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel("\(title): \(label)")
     }
@@ -1432,6 +1523,7 @@ struct RingChip: View {
 
 struct GaugeStrip: View {
     @Environment(BudgetStore.self) private var store
+    @Environment(\.palette) private var palette
     var body: some View {
         let s = store.budget.stats(in: store.viewing)
         let billsFrac = s.billsTotal == 0 ? 0.0 : Double(s.billsPaid) / Double(s.billsTotal)
@@ -1442,9 +1534,9 @@ struct GaugeStrip: View {
         ScrollView(.horizontal, showsIndicators: false) {
             GlassEffectContainer(spacing: 12) {
                 HStack(spacing: 12) {
-                    RingChip(title: "Bills", value: billsFrac, label: "\(s.billsPaid)/\(s.billsTotal)", tint: .teal)
-                    RingChip(title: "Money in", value: inFrac, label: inLabel, tint: .green)
-                    RingChip(title: "Spending", value: spendFrac, label: spendLabel, tint: spendFrac > 1 ? .red : .orange)
+                    RingChip(title: "Bills", value: billsFrac, label: "\(s.billsPaid)/\(s.billsTotal)", tint: palette.brand)
+                    RingChip(title: "Money in", value: inFrac, label: inLabel, tint: palette.accent)
+                    RingChip(title: "Spending", value: spendFrac, label: spendLabel, tint: spendFrac > 1 ? Color.red : palette.primary)
                 }
             }
         }
@@ -1454,10 +1546,11 @@ struct GaugeStrip: View {
 
 struct WaterfallChart: View {
     let model: Budget.CashModel
+    @Environment(\.palette) private var palette
 
     private func color(_ c: Budget.Col) -> Color {
         switch c.kind {
-        case .total: return .cyan
+        case .total: return palette.brand
         case .actual: return .primary
         case .inc: return .green
         case .dec: return c.spend ? .orange : .purple
@@ -1501,6 +1594,7 @@ struct WaterfallChart: View {
 
 struct CashFlowCard: View {
     @Environment(BudgetStore.self) private var store
+    @Environment(\.palette) private var palette
     let onExplore: () -> Void
 
     var body: some View {
@@ -1514,10 +1608,10 @@ struct CashFlowCard: View {
                     .font(.subheadline.weight(.semibold))
                     .padding(.horizontal, 12)
                     .padding(.vertical, 7)
-                    .glassEffect(.regular.tint(note.health.color.opacity(0.3)), in: .capsule)
+                    .surface(Capsule(), tint: note.health.color.opacity(0.3))
                 Spacer()
                 Button { store.sheet = .startBalance } label: { Label(startText, systemImage: "pencil").font(.subheadline) }
-                    .buttonStyle(.glass)
+                    .themedButton()
             }
             WaterfallChart(model: model).frame(height: 190)
             Text("Cash flow").font(.title3.bold())
@@ -1530,15 +1624,15 @@ struct CashFlowCard: View {
             Button(action: onExplore) {
                 Label("Explore the cash flow", systemImage: "arrow.right").frame(maxWidth: .infinity)
             }
-            .buttonStyle(.glassProminent)
+            .themedButton(prominent: true)
             .controlSize(.large)
         }
         .padding(16)
-        .glassEffect(.regular, in: .rect(cornerRadius: 28))
+        .surface(RoundedRectangle(cornerRadius: 28))
     }
 
     private func legendItems(_ m: Budget.CashModel) -> [(String, Color)] {
-        var out: [(String, Color)] = [("Money in", .green), ("Bills", .purple), ("Total", .cyan)]
+        var out: [(String, Color)] = [("Money in", .green), ("Bills", .purple), ("Total", palette.brand)]
         if m.cols.contains(where: { $0.spend }) { out.append(("Spending", .orange)) }
         if !m.marks.isEmpty { out.append(("My balance", .primary)) }
         return out
@@ -1560,6 +1654,7 @@ struct MonthSummaryCard: View {
 
 struct LoansCard: View {
     @Environment(BudgetStore.self) private var store
+    @Environment(\.palette) private var palette
     var body: some View {
         let loans = store.budget.liveLoans
         if !loans.isEmpty {
@@ -1574,7 +1669,7 @@ struct LoansCard: View {
                                 .font(.footnote).foregroundStyle(.secondary).monospacedDigit()
                         }
                         ProgressView(value: used)
-                            .tint(l.isCard ? Color.orange : Color.teal)
+                            .tint(l.isCard ? Color.orange : palette.primary)
                     }
                 }
             }
@@ -1594,6 +1689,7 @@ struct BillsTab: View {
     @Environment(BudgetStore.self) private var store
     @State private var filter: BillFilter = .all
     @State private var search = ""
+    @State private var path: [String] = []
 
     private func matches(_ r: BillRow) -> Bool {
         switch filter {
@@ -1610,7 +1706,7 @@ struct BillsTab: View {
         let rows = store.budget.rows(in: store.viewing).filter { matches($0) }
         let income = rows.filter { $0.item.type == .income }
         let bills = rows.filter { $0.item.type == .bill }
-        NavigationStack {
+        NavigationStack(path: $path) {
             List {
                 Section {
                     Picker("Show", selection: $filter) {
@@ -1636,11 +1732,14 @@ struct BillsTab: View {
             .navigationDestination(for: String.self) { key in BillDetail(key: key) }
             .budgetChrome("Bills")
         }
+        .onChange(of: path) { _, new in store.detailDepth = new.count }
+        .onDisappear { store.detailDepth = 0 }
     }
 }
 
 struct BillRowView: View {
     @Environment(BudgetStore.self) private var store
+    @Environment(\.palette) private var palette
     let row: BillRow
 
     var body: some View {
@@ -1649,9 +1748,10 @@ struct BillRowView: View {
         let effect = store.budget.effect(for: row.item, key: row.key, isPaid: row.isPaid)
         VStack(alignment: .leading, spacing: 8) {
             HStack(spacing: 12) {
-                Toggle(isOn: Binding(get: { row.isPaid }, set: { store.setPaid(row, $0) })) { Text(isIncome ? "Received" : "Paid") }
+                Toggle("", isOn: Binding(get: { row.isPaid }, set: { store.setPaid(row, $0) }))
                     .labelsHidden()
                     .fixedSize()
+                    .accessibilityLabel(isIncome ? "Received" : "Paid")
                 NavigationLink(value: row.key) {
                     HStack {
                         VStack(alignment: .leading, spacing: 2) {
@@ -1681,7 +1781,7 @@ struct BillRowView: View {
                     .font(.footnote.weight(.semibold))
                     .padding(.horizontal, 10)
                     .padding(.vertical, 6)
-                    .background(Color.teal.opacity(0.16), in: .capsule)
+                    .background(palette.primary.opacity(0.16), in: Capsule())
             }
         }
         .swipeActions(edge: .leading) {
@@ -1814,7 +1914,7 @@ struct StatTile: View {
         }
         .padding(14)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+        .surface(RoundedRectangle(cornerRadius: 20))
     }
 }
 
@@ -1848,6 +1948,7 @@ struct InsightsTab: View {
 
 struct WhereMoneyGoes: View {
     @Environment(BudgetStore.self) private var store
+    @Environment(\.palette) private var palette
 
     /// The biggest planned amounts this month, with the rest lumped together.
     private func shownRows() -> [(name: String, amount: Double)] {
@@ -1873,7 +1974,7 @@ struct WhereMoneyGoes: View {
                 Chart {
                     ForEach(Array(shown.enumerated()), id: \.offset) { _, r in
                         BarMark(x: .value("Amount", r.amount), y: .value("Item", r.name))
-                            .foregroundStyle(Color.teal.gradient)
+                            .foregroundStyle(palette.primary.gradient)
                             .annotation(position: .trailing) { Text(money(r.amount, whole: true)).font(.caption2).foregroundStyle(.secondary) }
                     }
                 }
@@ -1887,6 +1988,7 @@ struct WhereMoneyGoes: View {
 /// The cash flow explorer: drag to move through time, pinch (or use + and −) to zoom, tap a bar for details.
 struct CashExplorer: View {
     @Environment(BudgetStore.self) private var store
+    @Environment(\.palette) private var palette
     @State private var series: Budget.Series?
     @State private var plan: Budget.Series?
     @State private var visibleDays = 60.0
@@ -1918,7 +2020,7 @@ struct CashExplorer: View {
     private var emptyState: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("Set your starting balance, or type your chequing balance, and your cash flow shows up here.").foregroundStyle(.secondary)
-            Button("Set it up") { store.sheet = .startBalance }.buttonStyle(.glass)
+            Button("Set it up") { store.sheet = .startBalance }.themedButton()
         }
     }
 
@@ -1967,15 +2069,15 @@ struct CashExplorer: View {
                 Button { pan(0.3) } label: { Image(systemName: "chevron.right").frame(width: 22) }.accessibilityLabel("Forward in time")
                 Button("Today") { goToday() }
             }
-            .buttonStyle(.glass)
+            .themedButton()
         }
 
         ScrollView(.horizontal, showsIndicators: false) {
             HStack(spacing: 8) {
                 ForEach(presets, id: \.0) { p in
                     Button(p.0) { setDays(p.1); goToday() }
-                        .buttonStyle(.glass)
-                        .tint(abs(visibleDays - p.1) < p.1 * 0.12 ? Color.teal : nil)
+                        .themedButton()
+                        .tint(abs(visibleDays - p.1) < p.1 * 0.12 ? palette.primary : nil)
                 }
             }
         }
@@ -1984,10 +2086,10 @@ struct CashExplorer: View {
             ForEach(s.points) { p in
                 AreaMark(x: .value("Date", p.date), y: .value("Balance", p.value))
                     .interpolationMethod(.stepEnd)
-                    .foregroundStyle(Color.teal.opacity(0.16))
+                    .foregroundStyle(palette.primary.opacity(0.16))
                 LineMark(x: .value("Date", p.date), y: .value("Balance", p.value), series: .value("Line", "Balance"))
                     .interpolationMethod(.stepEnd)
-                    .foregroundStyle(Color.teal)
+                    .foregroundStyle(palette.primary)
                     .lineStyle(StrokeStyle(lineWidth: 2.4, lineJoin: .round))
             }
             if let plan {
@@ -2076,7 +2178,7 @@ struct CashExplorer: View {
             store.say("Saved. Your balance is \(money(v))." + (diff.map { " That is \(money(abs($0))) \($0 > 0 ? "ahead of" : "behind") the plan." } ?? ""))
             nowText = ""
         } label: { Text("Save my balance").frame(maxWidth: .infinity) }
-        .buttonStyle(.glassProminent)
+        .themedButton(prominent: true)
 
         Toggle("Update the forecast from it", isOn: Binding(get: { b.cash.follow }, set: { v in store.update { $0.cash.follow = v } }))
         Toggle("Include everyday spending", isOn: Binding(get: { b.cash.spend }, set: { v in store.update { $0.cash.spend = v } }))
@@ -2105,19 +2207,27 @@ struct CashExplorer: View {
 
 struct SettingsTab: View {
     @Environment(BudgetStore.self) private var store
+    @AppStorage("schemeChoice") private var scheme: SchemeChoice = .auto
+    @AppStorage("easyMode") private var easy = false
     @State private var showNew = false
     @State private var showRename = false
     @State private var confirmDelete = false
     @State private var nameText = ""
-    @State private var exportDoc: BackupDocument?
-    @State private var exporting = false
-    @State private var importing = false
 
     var body: some View {
         let b = store.budget
         let start = b.cashStart(store.viewing, b.cash)
         NavigationStack {
             Form {
+                Section("Appearance") {
+                    Picker("Light or dark", selection: $scheme) {
+                        ForEach(SchemeChoice.allCases) { c in Text(c.title).tag(c) }
+                    }
+                    .pickerStyle(.segmented)
+                    Toggle("Easy mode (big print)", isOn: $easy)
+                    Button("Wallpaper and colors…") { store.sheet = .theme }
+                }
+
                 Section("Budget") {
                     LabeledContent("Showing", value: b.name)
                     Button("New budget…") { nameText = ""; showNew = true }
@@ -2191,25 +2301,12 @@ struct SettingsTab: View {
                 }
 
                 Section {
-                    Button {
-                        exportDoc = BackupDocument(data: store.backupData())
-                        exporting = true
-                    } label: {
-                        Label("Save a backup to Files", systemImage: "square.and.arrow.down")
-                    }
-                    ShareLink(item: store.backupFile, preview: SharePreview("\(b.name) backup", image: Image(systemName: "doc.text"))) {
-                        Label("Send a backup…", systemImage: "square.and.arrow.up")
-                    }
-                    Button { importing = true } label: {
-                        Label("Import from Files…", systemImage: "folder")
-                    }
-                    Button { store.pendingImport = nil; store.sheet = .importBackup } label: {
-                        Label("Paste a backup…", systemImage: "doc.on.clipboard")
-                    }
+                    ShareLink("Share a backup", item: store.exportJSON())
+                    Button("Import a backup…") { store.sheet = .importBackup }
                 } header: {
                     Text("Back up")
                 } footer: {
-                    Text(backupNote(b))
+                    Text("The backup is the same file the web app saves, so you can move a budget between them.")
                 }
 
                 Section {
@@ -2219,15 +2316,6 @@ struct SettingsTab: View {
             }
             .scrollContentBackground(.hidden)
             .background { Backdrop() }
-            .fileExporter(isPresented: $exporting, document: exportDoc, contentType: .json, defaultFilename: store.backupBaseName) { result in
-                switch result {
-                case .success:
-                    store.markBackedUp()
-                    store.say("Backup saved to Files.")
-                case .failure(let error):
-                    if (error as? CocoaError)?.code != .userCancelled { store.say("The backup couldn’t be saved.") }
-                }
-            }
             .alert("New budget", isPresented: $showNew) {
                 TextField("Name", text: $nameText)
                 Button("Create") { store.addBudget(named: nameText) }
@@ -2245,17 +2333,6 @@ struct SettingsTab: View {
             }
             .budgetChrome("Settings")
         }
-        // kept on the stack, not the form, so it doesn't clash with the Save sheet above
-        .fileImporter(isPresented: $importing, allowedContentTypes: [.json, .plainText]) { result in
-            guard case .success(let url) = result else { return }
-            if let e = store.stageBackupFile(url) { store.say(e) } else { store.sheet = .importBackup }
-        }
-    }
-
-    private func backupNote(_ b: Budget) -> String {
-        let when = b.lastBackup.flatMap { YMD(iso: $0) }.map { "Last saved to Files on \($0.date.formatted(date: .abbreviated, time: .omitted))." }
-            ?? "Not saved to Files yet."
-        return when + " A backup holds this budget only. It is the same file the web app saves, so you can move a budget between them. You can also open a backup file from the Files app with TapBudget."
     }
 }
 
@@ -2582,85 +2659,1235 @@ struct ImportSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var text = ""
     @State private var error: String?
-    @State private var picking = false
-    @State private var confirmReplace = false
 
     var body: some View {
         NavigationStack {
             Form {
-                if let p = store.pendingImport { preview(p) } else { pasteBox }
+                Section {
+                    TextEditor(text: $text).frame(minHeight: 220).font(.system(.footnote, design: .monospaced))
+                } header: {
+                    Text("Paste a backup")
+                } footer: {
+                    Text("Paste the contents of a backup file from the web app. It is added as a new budget, so nothing you have here is replaced.")
+                }
                 if let error { Section { Text(error).foregroundStyle(Color.red) } }
             }
-            .navigationTitle(store.pendingImport == nil ? "Paste a backup" : "Import a backup")
+            .navigationTitle("Import a backup")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button("Cancel") { dismiss() } }
-                if store.pendingImport == nil {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Next") { error = store.stageBackup(text: text) }
-                            .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                ToolbarItem(placement: .confirmationAction) {
+                    Button("Import") {
+                        if let e = store.importBackup(text) { error = e } else { store.say("Imported."); dismiss() }
                     }
                 }
             }
-            .fileImporter(isPresented: $picking, allowedContentTypes: [.json, .plainText]) { result in
-                guard case .success(let url) = result else { return }
-                error = store.stageBackupFile(url)
-            }
-        }
-        .onDisappear { store.pendingImport = nil }          // closing the sheet drops anything not imported
-    }
-
-    private var pasteBox: some View {
-        Group {
-            Section {
-                Button { picking = true } label: { Label("Choose a backup file instead", systemImage: "folder") }
-            }
-            Section {
-                TextEditor(text: $text).frame(minHeight: 220).font(.system(.footnote, design: .monospaced))
-            } header: {
-                Text("Backup text")
-            } footer: {
-                Text("Open a backup file, copy all of its text and paste it here. You see what is in it before anything changes.")
-            }
         }
     }
+}
 
-    @ViewBuilder
-    private func preview(_ p: PendingImport) -> some View {
+// MARK: - Theme: colors, Flat or Glass, switch styles, wallpaper
+
+extension Color {
+    init(hex: String) {
+        let s = hex.trimmingCharacters(in: CharacterSet(charactersIn: "#"))
+        let v = Scanner(string: s).scanHexInt64() ?? 0
+        self.init(.sRGB, red: Double((v >> 16) & 0xff) / 255, green: Double((v >> 8) & 0xff) / 255, blue: Double(v & 0xff) / 255, opacity: 1)
+    }
+
+    var hexString: String {
+        let ui = UIColor(self)
+        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        ui.getRed(&r, green: &g, blue: &b, alpha: &a)
+        return String(format: "#%02x%02x%02x", Int((r * 255).rounded()), Int((g * 255).rounded()), Int((b * 255).rounded()))
+    }
+}
+
+/// The three colors of the budget being shown, and how it looks.
+struct Palette: Equatable {
+    var brand = Color(hex: "#2ebfd9")
+    var primary = Color(hex: "#0e7c91")
+    var accent = Color(hex: "#fdcb2f")
+    var look: LookKind = .glass
+    var switchKind: SwitchKind = .classic
+
+    init() {}
+    init(_ t: Theme) {
+        brand = Color(hex: t.colors.brand)
+        primary = Color(hex: t.colors.primary)
+        accent = Color(hex: t.colors.accent)
+        look = t.look
+        switchKind = t.switchKind
+    }
+}
+
+private struct PaletteKey: EnvironmentKey { static let defaultValue = Palette() }
+extension EnvironmentValues {
+    var palette: Palette {
+        get { self[PaletteKey.self] }
+        set { self[PaletteKey.self] = newValue }
+    }
+}
+
+/// Liquid Glass when the look is Glass; a solid fill when it is Flat.
+struct SurfaceModifier<S: Shape>: ViewModifier {
+    let shape: S
+    let tint: Color?
+    @Environment(\.palette) private var palette
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if palette.look == .glass {
+            if let tint {
+                content.glassEffect(.regular.tint(tint), in: shape)
+            } else {
+                content.glassEffect(.regular, in: shape)
+            }
+        } else {
+            content.background(flatFill, in: shape)
+        }
+    }
+
+    private var flatFill: Color {
+        if let tint { return tint.opacity(0.28) }
+        return Color(uiColor: .secondarySystemGroupedBackground)
+    }
+}
+
+extension View {
+    func surface<S: Shape>(_ shape: S, tint: Color? = nil) -> some View { modifier(SurfaceModifier(shape: shape, tint: tint)) }
+    func themedButton(prominent: Bool = false) -> some View { modifier(ThemedButtonModifier(prominent: prominent)) }
+    func themed(_ palette: Palette) -> some View { modifier(ThemeApplier(palette: palette)) }
+}
+
+struct ThemedButtonModifier: ViewModifier {
+    let prominent: Bool
+    @Environment(\.palette) private var palette
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if palette.look == .glass {
+            if prominent { content.buttonStyle(.glassProminent) } else { content.buttonStyle(.glass) }
+        } else {
+            if prominent { content.buttonStyle(.borderedProminent) } else { content.buttonStyle(.bordered) }
+        }
+    }
+}
+
+struct ThemedSwitches: ViewModifier {
+    @Environment(\.palette) private var palette
+
+    @ViewBuilder func body(content: Content) -> some View {
+        if palette.switchKind == .classic {
+            content
+        } else {
+            content.toggleStyle(ThemedSwitchStyle(kind: palette.switchKind))
+        }
+    }
+}
+
+/// Applies a budget's palette, tint and switch style to everything inside.
+struct ThemeApplier: ViewModifier {
+    let palette: Palette
+    @Environment(\.colorScheme) private var scheme
+
+    func body(content: Content) -> some View {
+        content
+            .modifier(ThemedSwitches())
+            .environment(\.palette, palette)
+            .tint(scheme == .dark ? palette.brand : palette.primary)
+    }
+}
+
+// MARK: Switch styles
+
+struct SwitchGraphic: View {
+    let kind: SwitchKind
+    let isOn: Bool
+    @Environment(\.colorScheme) private var scheme
+    @Environment(\.palette) private var palette
+
+    var body: some View {
+        ZStack(alignment: isOn ? .trailing : .leading) {
+            track
+            knob.frame(width: 24, height: 24).padding(3)
+        }
+        .frame(width: 52, height: 32)
+        .animation(.snappy(duration: 0.18), value: isOn)
+        .accessibilityHidden(true)
+    }
+
+    @ViewBuilder private var track: some View {
+        switch kind {
+        case .classic:
+            Capsule().fill(isOn ? Color.green : Color.secondary.opacity(0.35))
+        case .check:
+            Capsule().fill(isOn ? Color(hex: "#2e9b63") : Color(hex: "#e0575b"))
+                .overlay(Capsule().strokeBorder(isOn ? Color(hex: "#1f7a4b") : Color(hex: "#b83a3f"), lineWidth: 2))
+                .overlay(alignment: isOn ? .leading : .trailing) {
+                    Image(systemName: isOn ? "checkmark" : "xmark")
+                        .font(.system(size: 12, weight: .heavy))
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 10)
+                }
+        case .orb:
+            Capsule().fill(.ultraThinMaterial)
+                .overlay(Capsule().strokeBorder(Color.primary.opacity(0.5), lineWidth: 1.5))
+        case .sun:
+            Capsule().strokeBorder(Color.primary.opacity(0.7), lineWidth: 1.5)
+        case .soft:
+            Capsule().fill(isOn ? palette.brand.opacity(0.25) : Color.clear)
+                .overlay(Capsule().strokeBorder(palette.primary, lineWidth: 1.5))
+        }
+    }
+
+    @ViewBuilder private var knob: some View {
+        let dark = scheme == .dark
+        switch kind {
+        case .classic:
+            Circle().fill(Color.white).shadow(color: Color.black.opacity(0.25), radius: 1.5, y: 1)
+        case .check:
+            Circle().fill(Color(hex: "#f4f4f6")).overlay(Circle().strokeBorder(Color.black.opacity(0.16), lineWidth: 1))
+        case .orb:
+            if isOn {
+                Circle()
+                    .fill(RadialGradient(colors: dark ? [Color(hex: "#c9ffd9"), Color(hex: "#2ee07a"), Color(hex: "#12994a")]
+                                                      : [Color(hex: "#3fd17a"), Color(hex: "#0f8a3c"), Color(hex: "#075c27")],
+                                         center: UnitPoint(x: 0.35, y: 0.3), startRadius: 0, endRadius: 16))
+                    .shadow(color: Color(hex: dark ? "#2ee07a" : "#14a34b").opacity(0.7), radius: 6)
+            } else {
+                Circle()
+                    .fill(RadialGradient(colors: dark ? [Color(hex: "#ffa38f"), Color(hex: "#e5533d"), Color(hex: "#9d2918")]
+                                                      : [Color(hex: "#ff7a68"), Color(hex: "#c42a1d"), Color(hex: "#7d160d")],
+                                         center: UnitPoint(x: 0.4, y: 0.35), startRadius: 0, endRadius: 16))
+                    .blur(radius: 1.2)
+                    .shadow(color: Color(hex: dark ? "#e5533d" : "#d92d20").opacity(0.5), radius: 5)
+            }
+        case .sun:
+            if isOn {
+                Circle()
+                    .fill(RadialGradient(colors: [Color(hex: dark ? "#fff6c9" : "#ffe27a"), dark ? palette.accent : Color(hex: "#f59a0c"), Color(hex: dark ? "#e8780a" : "#c2410c")],
+                                         center: UnitPoint(x: 0.35, y: 0.3), startRadius: 0, endRadius: 16))
+                    .overlay(Circle().strokeBorder(dark ? Color.clear : Color(hex: "#b45309"), lineWidth: 1.5))
+                    .shadow(color: (dark ? palette.accent : Color(hex: "#f59a0c")).opacity(0.7), radius: 6)
+            } else {
+                Circle()
+                    .strokeBorder(dark ? palette.accent : Color(hex: "#c2570a"), lineWidth: 3)
+                    .shadow(color: (dark ? palette.accent : Color(hex: "#c2570a")).opacity(0.5), radius: 4)
+            }
+        case .soft:
+            if isOn { Circle().fill(palette.primary) } else { Circle().strokeBorder(palette.primary, lineWidth: 3) }
+        }
+    }
+}
+
+struct ThemedSwitchStyle: ToggleStyle {
+    let kind: SwitchKind
+
+    func makeBody(configuration: Configuration) -> some View {
+        HStack {
+            configuration.label
+            Spacer(minLength: 8)
+            SwitchGraphic(kind: kind, isOn: configuration.isOn)
+        }
+        .contentShape(Rectangle())
+        .onTapGesture { configuration.isOn.toggle() }
+        .accessibilityElement(children: .combine)
+        .accessibilityAddTraits(.isButton)
+        .accessibilityValue(configuration.isOn ? "On" : "Off")
+    }
+}
+
+// MARK: Wallpaper pictures (kept in Application Support, one per budget)
+
+@MainActor
+enum WallpaperFiles {
+    private static var cache: [String: UIImage] = [:]
+
+    private static var folder: URL {
+        let d = URL.applicationSupportDirectory.appending(path: "wallpapers")
+        try? FileManager.default.createDirectory(at: d, withIntermediateDirectories: true)
+        return d
+    }
+
+    static func image(_ name: String) -> UIImage? {
+        if let i = cache[name] { return i }
+        guard let data = try? Data(contentsOf: folder.appending(path: name)), let img = UIImage(data: data) else { return nil }
+        cache[name] = img
+        return img
+    }
+
+    /// Shrinks the picture, saves it, and returns its file name.
+    static func save(_ data: Data, for budgetID: String) -> String? {
+        guard let src = UIImage(data: data) else { return nil }
+        let longest = max(src.size.width, src.size.height)
+        let scale = longest > 1600 ? 1600 / longest : 1
+        let size = CGSize(width: src.size.width * scale, height: src.size.height * scale)
+        let img = UIGraphicsImageRenderer(size: size).image { _ in src.draw(in: CGRect(origin: .zero, size: size)) }
+        guard let jpeg = img.jpegData(compressionQuality: 0.8) else { return nil }
+        let name = "\(budgetID)-\(Int(Date().timeIntervalSince1970)).jpg"
+        do { try jpeg.write(to: folder.appending(path: name), options: .atomic) } catch { return nil }
+        return name
+    }
+
+    static func remove(_ name: String?) {
+        guard let name else { return }
+        try? FileManager.default.removeItem(at: folder.appending(path: name))
+        cache[name] = nil
+    }
+}
+
+func ordinal(_ n: Int) -> String {
+    let suffix: String
+    if (11...13).contains(n % 100) { suffix = "th" }
+    else {
+        switch n % 10 {
+        case 1: suffix = "st"
+        case 2: suffix = "nd"
+        case 3: suffix = "rd"
+        default: suffix = "th"
+        }
+    }
+    return "\(n)\(suffix)"
+}
+
+func greetingText() -> String {
+    let h = Calendar.current.component(.hour, from: Date())
+    return h < 12 ? "Good morning" : (h < 18 ? "Good afternoon" : "Good evening")
+}
+
+// MARK: - The slide-out menu on the left
+
+struct MenuOverlay: View {
+    @Environment(BudgetStore.self) private var store
+
+    var body: some View {
+        GeometryReader { geo in
+            ZStack(alignment: .leading) {
+                if store.menuOpen {
+                    Color.black.opacity(0.35)
+                        .ignoresSafeArea()
+                        .onTapGesture { store.menuOpen = false }
+                        .transition(.opacity)
+                        .accessibilityHidden(true)
+                    MenuDrawer()
+                        .frame(width: min(340, geo.size.width * 0.88))
+                        .transition(.move(edge: .leading))
+                        .gesture(DragGesture().onEnded { v in
+                            if v.translation.width < -50 { store.menuOpen = false }
+                        })
+                }
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .animation(.snappy(duration: 0.28), value: store.menuOpen)
+        }
+        .allowsHitTesting(store.menuOpen)
+    }
+}
+
+struct MenuRowLabel: View {
+    let title: String
+    let icon: String
+    var selected = false
+    @Environment(\.palette) private var palette
+
+    var body: some View {
+        HStack(spacing: 14) {
+            Image(systemName: icon).frame(width: 26).foregroundStyle(.tint)
+            Text(title).foregroundStyle(Color.primary)
+            Spacer()
+            if selected { Image(systemName: "checkmark").font(.footnote.weight(.bold)).foregroundStyle(.tint) }
+        }
+        .padding(.vertical, 12)
+        .padding(.horizontal, 12)
+        .frame(minHeight: 44)
+        .contentShape(Rectangle())
+        .background(selected ? palette.brand.opacity(0.18) : Color.clear, in: RoundedRectangle(cornerRadius: 12))
+    }
+}
+
+struct MenuDrawer: View {
+    @Environment(BudgetStore.self) private var store
+    @Environment(\.palette) private var palette
+    @AppStorage("schemeChoice") private var scheme: SchemeChoice = .auto
+    @AppStorage("easyMode") private var easy = false
+    @State private var query = ""
+    @State private var backupURL: URL?
+    @State private var showRestore = false
+
+    private func show(_ words: String) -> Bool {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        return q.isEmpty || words.localizedCaseInsensitiveContains(q)
+    }
+
+    /// Closes the menu, then shows a sheet once the menu has slid away.
+    private func open(_ sheet: SheetKind) {
+        store.menuOpen = false
+        Task {
+            try? await Task.sleep(for: .milliseconds(280))
+            store.sheet = sheet
+        }
+    }
+
+    private func row(_ title: String, _ icon: String, selected: Bool = false, action: @escaping () -> Void) -> some View {
+        Button(action: action) { MenuRowLabel(title: title, icon: icon, selected: selected) }
+            .buttonStyle(.plain)
+    }
+
+    private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title).font(.footnote.weight(.semibold)).foregroundStyle(.secondary).padding(.horizontal, 12).padding(.bottom, 4)
+            content()
+        }
+    }
+
+    private func restore(_ result: Result<URL, Error>) {
+        guard case .success(let url) = result else { return }
+        let ok = url.startAccessingSecurityScopedResource()
+        defer { if ok { url.stopAccessingSecurityScopedResource() } }
+        guard let data = try? Data(contentsOf: url), let text = String(data: data, encoding: .utf8) else {
+            store.say("Could not read that file.")
+            return
+        }
+        if let e = store.importBackup(text) { store.say(e) } else { store.say("Restored as a new budget."); store.menuOpen = false }
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            header
+            searchBox
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    budgetsSection
+                    toolsSection
+                    backupSection
+                    appearanceSection
+                    aboutSection
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 12)
+            }
+            Text("TapBudget version \(AppInfo.version)")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .padding(.vertical, 10)
+        }
+        .frame(maxHeight: .infinity)
+        .background {
+            Rectangle()
+                .fill(palette.look == .glass ? AnyShapeStyle(Material.regularMaterial) : AnyShapeStyle(Color(uiColor: .secondarySystemGroupedBackground)))
+                .ignoresSafeArea()
+        }
+        .shadow(color: Color.black.opacity(0.25), radius: 18)
+        .onAppear { backupURL = store.backupFileURL() }
+        .fileImporter(isPresented: $showRestore, allowedContentTypes: [.json]) { restore($0) }
+        .accessibilityAddTraits(.isModal)
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.circle.fill").font(.system(size: 32)).foregroundStyle(palette.brand)
+            VStack(alignment: .leading, spacing: 1) {
+                Text("TapBudget").font(.headline)
+                Text(store.budget.name).font(.footnote).foregroundStyle(.secondary).lineLimit(1)
+            }
+            Spacer()
+            Button { store.menuOpen = false } label: { Image(systemName: "xmark").frame(width: 28, height: 28) }
+                .themedButton()
+                .buttonBorderShape(.circle)
+                .accessibilityLabel("Close menu")
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 8)
+    }
+
+    private var searchBox: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass").foregroundStyle(.secondary)
+            TextField("Search menu", text: $query).textFieldStyle(.plain).submitLabel(.search)
+            if !query.isEmpty {
+                Button { query = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(.secondary) }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("Clear search")
+            }
+        }
+        .padding(.horizontal, 14)
+        .padding(.vertical, 10)
+        .surface(Capsule())
+        .padding(.horizontal, 16)
+        .padding(.bottom, 4)
+    }
+
+    @ViewBuilder private var budgetsSection: some View {
+        let budgets = store.library.budgets
+        if show("budgets manage example") || budgets.contains(where: { show($0.name) }) {
+            section("Budgets") {
+                ForEach(budgets) { b in
+                    if show("\(b.name) budget") {
+                        row(b.name, b.id == store.library.activeID ? "checkmark.circle.fill" : "circle", selected: b.id == store.library.activeID) {
+                            store.switchBudget(b.id)
+                            store.menuOpen = false
+                        }
+                    }
+                }
+                if show("manage budgets") { row("Manage budgets…", "rectangle.stack") { open(.manageBudgets) } }
+                if show("add an example budget") {
+                    row("Add an example budget", "star") {
+                        store.addExample()
+                        store.menuOpen = false
+                        store.say("Example budget added.")
+                    }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder private var toolsSection: some View {
+        if show("tools add item edit items share import budget") {
+            section("Tools") {
+                if show("add item") { row("Add item", "plus") { open(.item(nil)) } }
+                if show("edit items") { row("Edit items", "pencil") { open(.allItems) } }
+                if show("share this budget") {
+                    ShareLink(item: store.exportJSON()) { MenuRowLabel(title: "Share this budget", icon: "square.and.arrow.up") }
+                        .buttonStyle(.plain)
+                }
+                if show("import a budget") { row("Import a budget", "tray.and.arrow.down") { open(.importBackup) } }
+            }
+        }
+    }
+
+    @ViewBuilder private var backupSection: some View {
+        if show("backup save restore file") {
+            section("Backup") {
+                if show("save a backup file"), let url = backupURL {
+                    ShareLink(item: url) { MenuRowLabel(title: "Save a backup file", icon: "arrow.down.doc") }
+                        .buttonStyle(.plain)
+                }
+                if show("restore from a file") { row("Restore from a file…", "arrow.up.doc") { showRestore = true } }
+            }
+        }
+    }
+
+    @ViewBuilder private var appearanceSection: some View {
+        if show("appearance auto light dark easy mode big print wallpaper colors look switches theme") {
+            section("Appearance") {
+                Picker("Appearance", selection: $scheme) {
+                    ForEach(SchemeChoice.allCases) { c in Text(c.title).tag(c) }
+                }
+                .pickerStyle(.segmented)
+                .padding(.horizontal, 12)
+                .padding(.bottom, 6)
+                Toggle(isOn: $easy) { Label("Easy mode (big print)", systemImage: "textformat.size") }
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 8)
+                    .onChange(of: easy) { _, on in if on { store.menuOpen = false } }
+                row("Wallpaper and colors…", "paintpalette") { open(.theme) }
+            }
+        }
+    }
+
+    @ViewBuilder private var aboutSection: some View {
+        if show("about privacy policy support help") {
+            section("About") {
+                row("About TapBudget", "info.circle") { open(.about) }
+                Link(destination: URL(string: "https://tapbudget-ashy.vercel.app/about/privacy.html")!) {
+                    MenuRowLabel(title: "Privacy policy", icon: "hand.raised")
+                }
+                .buttonStyle(.plain)
+                Link(destination: URL(string: "https://tapbudget-ashy.vercel.app/about/support.html")!) {
+                    MenuRowLabel(title: "Support", icon: "questionmark.circle")
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+}
+
+// MARK: - Wallpaper and colors
+
+struct ThemeSheet: View {
+    @Environment(BudgetStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var photo: PhotosPickerItem?
+    @State private var tryIt = true
+
+    var body: some View {
+        let t = store.budget.theme
+        NavigationStack {
+            Form {
+                Section {
+                    Text("These settings are for “\(store.budget.name)”. Each budget keeps its own wallpaper, colors, look and switches. Light, Dark or Auto is set in the menu and is for the whole app.")
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                }
+                wallpaperSection(t)
+                lookSection(t)
+                switchSection(t)
+                colorSection(t)
+            }
+            .navigationTitle("Wallpaper and colors")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .onChange(of: photo) { _, item in
+                guard let item else { return }
+                Task {
+                    if let data = try? await item.loadTransferable(type: Data.self), let name = WallpaperFiles.save(data, for: store.budget.id) {
+                        WallpaperFiles.remove(store.budget.theme.wallpaper.fileName)
+                        store.setTheme { $0.wallpaper.fileName = name }
+                    }
+                    photo = nil
+                }
+            }
+        }
+    }
+
+    // MARK: Wallpaper
+
+    @ViewBuilder private func wallpaperSection(_ t: Theme) -> some View {
         Section {
-            LabeledContent("Budget", value: p.name)
-            LabeledContent("Items", value: "\(p.items.count)")
-            LabeledContent("Loans and cards", value: "\(p.loans.count)")
-            LabeledContent("Paid history", value: p.pay.isEmpty ? "None" : "\(p.pay.count) entries")
-            LabeledContent("Balances", value: p.cash == nil ? "Not included" : "Included")
+            PhotosPicker(selection: $photo, matching: .images) {
+                Label(t.wallpaper.fileName == nil ? "Choose a photo" : "Choose a different photo", systemImage: "photo")
+            }
+            if let name = t.wallpaper.fileName, let img = WallpaperFiles.image(name) {
+                Image(uiImage: img)
+                    .resizable()
+                    .scaledToFill()
+                    .frame(height: 120)
+                    .clipShape(RoundedRectangle(cornerRadius: 14))
+                    .accessibilityHidden(true)
+                VStack(alignment: .leading) {
+                    HStack { Text("Dim"); Spacer(); Text("\(Int((t.wallpaper.dim * 100).rounded()))%").foregroundStyle(.secondary) }
+                    Slider(value: Binding(get: { store.budget.theme.wallpaper.dim }, set: { v in store.setTheme { $0.wallpaper.dim = v } }), in: 0...0.7)
+                }
+                VStack(alignment: .leading) {
+                    HStack { Text("Blur"); Spacer(); Text("\(Int(t.wallpaper.blur.rounded()))").foregroundStyle(.secondary) }
+                    Slider(value: Binding(get: { store.budget.theme.wallpaper.blur }, set: { v in store.setTheme { $0.wallpaper.blur = v } }), in: 0...20)
+                }
+                Button("Remove wallpaper", role: .destructive) {
+                    WallpaperFiles.remove(name)
+                    store.setTheme { $0.wallpaper.fileName = nil }
+                }
+            }
         } header: {
-            Text("In this backup")
+            Text("Wallpaper")
         } footer: {
-            Text("From \(p.source)")
+            Text("A picture from your photos behind the app. Dim and blur keep the text easy to read. It stays on this phone.")
         }
+    }
 
+    // MARK: Look
+
+    @ViewBuilder private func lookSection(_ t: Theme) -> some View {
         Section {
-            Button {
-                store.applyImport()
-                dismiss()
-            } label: {
-                Label("Add as a new budget", systemImage: "plus.circle.fill").bold()
+            Picker("Look", selection: Binding(get: { store.budget.theme.look }, set: { v in store.setTheme { $0.look = v } })) {
+                Text("Flat").tag(LookKind.flat)
+                Text("Glass").tag(LookKind.glass)
             }
-            if let match = store.matchingBudget(for: p) {
-                Button(role: .destructive) { confirmReplace = true } label: {
-                    Label("Replace “\(match.name)”", systemImage: "arrow.triangle.2.circlepath")
-                }
-                .confirmationDialog("Replace “\(match.name)”?", isPresented: $confirmReplace, titleVisibility: .visible) {
-                    Button("Replace", role: .destructive) {
-                        store.applyImport(replacing: match.id)
-                        dismiss()
-                    }
-                } message: {
-                    Text("Its bills, payments, loans and balances are swapped for the ones in the backup. This can’t be undone, so save a backup of it first if you are not sure.")
-                }
-            }
+            .pickerStyle(.segmented)
+        } header: {
+            Text("Look")
         } footer: {
-            Text("Adding keeps everything you have here. The new budget opens straight away.")
+            Text("Flat keeps the cards, pills and menu solid. Glass makes them see-through Liquid Glass. The tab bar and the bars at the top are always the system's glass on iOS 26 and later.")
+        }
+    }
+
+    // MARK: Switches
+
+    @ViewBuilder private func switchSection(_ t: Theme) -> some View {
+        Section {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                ForEach(SwitchKind.allCases) { k in
+                    Button { store.setTheme { $0.switchKind = k } } label: {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(spacing: 10) {
+                                SwitchGraphic(kind: k, isOn: true)
+                                SwitchGraphic(kind: k, isOn: false)
+                            }
+                            Text(k.title).font(.subheadline.weight(.semibold)).foregroundStyle(Color.primary)
+                            Text(k.detail).font(.caption).foregroundStyle(.secondary).multilineTextAlignment(.leading)
+                        }
+                        .padding(10)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(t.switchKind == k ? Color(hex: t.colors.primary) : Color.secondary.opacity(0.3), lineWidth: t.switchKind == k ? 2.5 : 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityAddTraits(t.switchKind == k ? .isSelected : [])
+                }
+            }
+            Toggle("Try it. Tap the switch.", isOn: $tryIt)
+        } header: {
+            Text("Switches")
+        } footer: {
+            Text("How the paid switch on each bill, and the other on and off switches, look. It changes straight away.")
+        }
+    }
+
+    // MARK: Colors
+
+    @ViewBuilder private func colorSection(_ t: Theme) -> some View {
+        Section {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                ForEach(ThemeColors.presets) { p in
+                    Button {
+                        store.setTheme { $0.colors = ThemeColors(preset: p.id, brand: p.brand, primary: p.primary, accent: p.accent) }
+                    } label: {
+                        VStack(spacing: 8) {
+                            HStack(spacing: 0) {
+                                Color(hex: p.brand)
+                                Color(hex: p.primary)
+                                Color(hex: p.accent)
+                            }
+                            .frame(height: 34)
+                            .clipShape(RoundedRectangle(cornerRadius: 8))
+                            Text(p.name).font(.footnote.weight(.semibold)).foregroundStyle(Color.primary)
+                        }
+                        .padding(8)
+                        .overlay(RoundedRectangle(cornerRadius: 12).strokeBorder(t.colors.preset == p.id ? Color(hex: t.colors.primary) : Color.secondary.opacity(0.3), lineWidth: t.colors.preset == p.id ? 2.5 : 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel(p.name)
+                    .accessibilityAddTraits(t.colors.preset == p.id ? .isSelected : [])
+                }
+            }
+            ColorPicker("Bill and heading color", selection: Binding(get: { Color(hex: store.budget.theme.colors.brand) },
+                                                                    set: { c in store.setTheme { $0.colors.brand = c.hexString; $0.colors.preset = "custom" } }), supportsOpacity: false)
+            ColorPicker("Bar and chart color", selection: Binding(get: { Color(hex: store.budget.theme.colors.primary) },
+                                                                set: { c in store.setTheme { $0.colors.primary = c.hexString; $0.colors.preset = "custom" } }), supportsOpacity: false)
+            ColorPicker("Money in color", selection: Binding(get: { Color(hex: store.budget.theme.colors.accent) },
+                                                           set: { c in store.setTheme { $0.colors.accent = c.hexString; $0.colors.preset = "custom" } }), supportsOpacity: false)
+            Button("Back to Cyan") { store.setTheme { $0.colors = ThemeColors() } }
+        } header: {
+            Text("Colors")
+        } footer: {
+            Text("Pick a ready-made set, or choose your own three colors.")
+        }
+    }
+}
+
+// MARK: - Manage budgets, Edit items, About
+
+struct ManageBudgetsSheet: View {
+    @Environment(BudgetStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State private var showNew = false
+    @State private var showRename = false
+    @State private var nameText = ""
+    @State private var pendingDelete: Budget?
+
+    var body: some View {
+        NavigationStack {
+            List {
+                Section("Your budgets") {
+                    ForEach(store.library.budgets) { b in
+                        Button { store.switchBudget(b.id) } label: {
+                            HStack {
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(b.name).foregroundStyle(Color.primary)
+                                    Text("\(b.items.count) items" + (b.isSample ? " · example" : "")).font(.footnote).foregroundStyle(.secondary)
+                                }
+                                Spacer()
+                                if b.id == store.library.activeID { Image(systemName: "checkmark").foregroundStyle(.tint) }
+                            }
+                        }
+                        .swipeActions {
+                            if store.library.budgets.count > 1 {
+                                Button("Delete", role: .destructive) { pendingDelete = b }
+                            }
+                        }
+                    }
+                }
+                Section {
+                    Button("New budget…") { nameText = ""; showNew = true }
+                    Button("Rename this budget…") { nameText = store.budget.name; showRename = true }
+                    Button("Add an example budget") { store.addExample() }
+                } footer: {
+                    Text("Swipe a budget to delete it. A new budget starts with the colors and look that were showing.")
+                }
+            }
+            .navigationTitle("Manage budgets")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+            .alert("New budget", isPresented: $showNew) {
+                TextField("Name", text: $nameText)
+                Button("Create") { store.addBudget(named: nameText) }
+                Button("Cancel", role: .cancel) {}
+            }
+            .alert("Rename budget", isPresented: $showRename) {
+                TextField("Name", text: $nameText)
+                Button("Save") { store.renameBudget(nameText) }
+                Button("Cancel", role: .cancel) {}
+            }
+            .confirmationDialog("Delete this budget?", isPresented: Binding(get: { pendingDelete != nil }, set: { if !$0 { pendingDelete = nil } }),
+                                titleVisibility: .visible, presenting: pendingDelete) { b in
+                Button("Delete “\(b.name)”", role: .destructive) { store.deleteBudget(id: b.id) }
+            } message: { _ in
+                Text("This removes its bills, payments and balances from this phone.")
+            }
+        }
+    }
+}
+
+struct ItemsListSheet: View {
+    @Environment(BudgetStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+
+    private func detail(_ it: Item) -> String {
+        if it.type == .variable { return it.day.map { "Budget · on the \(ordinal($0))" } ?? "Budget · spread through the month" }
+        if it.biweekly { return "Every 2 weeks" }
+        return "The \(ordinal(it.day ?? 1)) of each month"
+    }
+
+    var body: some View {
+        NavigationStack {
+            List {
+                ForEach(ItemType.allCases) { type in
+                    let items = store.budget.items.filter { $0.type == type }.sorted { $0.name < $1.name }
+                    if !items.isEmpty {
+                        Section(type.label) {
+                            ForEach(items) { it in
+                                Button { store.sheet = .item(it) } label: {
+                                    HStack {
+                                        VStack(alignment: .leading, spacing: 2) {
+                                            Text(it.name).foregroundStyle(Color.primary)
+                                            Text(detail(it)).font(.footnote).foregroundStyle(.secondary)
+                                        }
+                                        Spacer()
+                                        Text(money(it.amount)).monospacedDigit().foregroundStyle(Color.primary)
+                                    }
+                                }
+                                .swipeActions { Button("Delete", role: .destructive) { store.delete(it) } }
+                            }
+                        }
+                    }
+                }
+                Section { Button("Add an item") { store.sheet = .item(nil) } }
+            }
+            .navigationTitle("Edit items")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+    }
+}
+
+struct AboutSheet: View {
+    @Environment(\.dismiss) private var dismiss
+    var body: some View {
+        NavigationStack {
+            List {
+                Section {
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text("TapBudget").font(.title2.bold())
+                        Text("Version \(AppInfo.version)").foregroundStyle(.secondary)
+                        Text("A simple budget tracker. Switch a bill on when you pay it, and the date is filled in for you.")
+                    }
+                    .padding(.vertical, 4)
+                }
+                Section {
+                    Text("Your budgets are saved on this phone only. There is no account, no server, and nothing is sent anywhere.")
+                }
+                Section {
+                    Link("Privacy policy", destination: URL(string: "https://tapbudget-ashy.vercel.app/about/privacy.html")!)
+                    Link("Support", destination: URL(string: "https://tapbudget-ashy.vercel.app/about/support.html")!)
+                    Link("Email tapbudget17@gmail.com", destination: URL(string: "mailto:tapbudget17@gmail.com")!)
+                }
+            }
+            .navigationTitle("About")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { dismiss() } } }
+        }
+    }
+}
+
+// MARK: - Easy mode: big print, four big buttons, plain words
+
+enum EasyTab: Hashable { case home, overview, bills, more }
+
+struct EasyRoot: View {
+    @AppStorage("easyXL") private var extraLarge = false
+    @State private var tab: EasyTab = .home
+
+    var body: some View {
+        TabView(selection: $tab) {
+            Tab("Home", systemImage: "house", value: EasyTab.home) { EasyHome(go: { tab = $0 }) }
+            Tab("Overview", systemImage: "chart.bar", value: EasyTab.overview) { EasyOverview(go: { tab = $0 }) }
+            Tab("Bills", systemImage: "list.bullet", value: EasyTab.bills) { EasyBills() }
+            Tab("More", systemImage: "ellipsis", value: EasyTab.more) { EasyMore() }
+        }
+        .dynamicTypeSize(extraLarge ? DynamicTypeSize.accessibility2 : DynamicTypeSize.xxxLarge)
+    }
+}
+
+struct EasyCard<Content: View>: View {
+    var tint: Color?
+    let content: Content
+
+    init(tint: Color? = nil, @ViewBuilder content: () -> Content) {
+        self.tint = tint
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) { content }
+            .padding(18)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .surface(RoundedRectangle(cornerRadius: 24), tint: tint)
+    }
+}
+
+struct EasyButton: View {
+    let title: String
+    var icon: String?
+    var prominent = false
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 10) {
+                if let icon { Image(systemName: icon) }
+                Text(title)
+            }
+            .font(.title3.weight(.bold))
+            .frame(maxWidth: .infinity, minHeight: 56)
+        }
+        .themedButton(prominent: prominent)
+        .controlSize(.large)
+    }
+}
+
+struct EasyHome: View {
+    @Environment(BudgetStore.self) private var store
+    let go: (EasyTab) -> Void
+
+    private func homeTint(late: Bool, soon: Bool) -> Color? { late ? Color.red : (soon ? Color.orange : nil) }
+
+    var body: some View {
+        let b = store.budget
+        let ym = YM.current
+        let nx = b.easyNext(in: ym)
+        let s = b.stats(in: ym)
+        let acct = b.easyAccount(b.cashModel(ym))
+        let unpaidBills = b.rows(in: ym).filter { !$0.isPaid && $0.item.type == .bill }
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    if b.items.isEmpty {
+                        EasyCard {
+                            Text("Welcome").font(.largeTitle.bold())
+                            Text("Let’s add your first bill. It only takes a minute.").font(.title3)
+                        }
+                        EasyButton(title: "Add a bill", prominent: true) { store.sheet = .item(nil) }
+                    } else {
+                        if let n = nx.next {
+                            let w = easyWhen(n.due, income: false)
+                            EasyCard(tint: homeTint(late: !nx.late.isEmpty, soon: w.soon)) {
+                                Text(nx.late.isEmpty ? "Your next bill" : (nx.late.count == 1 ? "This bill is late" : "\(nx.late.count) bills are late. This one is the oldest."))
+                                    .font(.subheadline.weight(.bold))
+                                HStack {
+                                    Text(n.item.name).font(.title.bold())
+                                    Spacer()
+                                    Text(money(n.item.amount)).font(.title.bold())
+                                }
+                                Text(w.text).font(.title3.weight(.semibold))
+                                if let note = b.linkWords(for: n.item) { Text(note).font(.callout) }
+                                EasyButton(title: "I paid it", icon: "checkmark", prominent: true) { store.setPaid(n, true) }
+                            }
+                        } else if !unpaidBills.isEmpty {
+                            EasyCard(tint: Color.green) {
+                                Text("Nothing to do").font(.title.bold())
+                                Text("The rest of this month’s bills pay by themselves.").font(.title3)
+                            }
+                        } else if s.billsTotal > 0 {
+                            EasyCard(tint: Color.green) {
+                                Text("All paid").font(.title.bold())
+                                Text("Every bill for \(ym.title) is paid. Well done.").font(.title3)
+                            }
+                        }
+                        EasyCard {
+                            Text("This month").font(.subheadline.weight(.bold))
+                            HStack { Text("Bills left to pay"); Spacer(); Text(money(s.billsLeft)).font(.title3.bold()) }
+                            HStack { Text("Money still to come"); Spacer(); Text(money(s.inExpected - s.inReceived)).font(.title3.bold()) }
+                        }
+                        if let a = acct {
+                            EasyCard(tint: a.health.color) {
+                                Text("Your account").font(.subheadline.weight(.bold))
+                                Text(a.headline).font(.title.bold())
+                                Text(a.detail).font(.title3)
+                            }
+                        } else {
+                            EasyCard {
+                                Text("Your account").font(.subheadline.weight(.bold))
+                                Text("Tell us what is in your account and we will tell you if you will have enough.").font(.title3)
+                                EasyButton(title: "Tell us my balance") { store.sheet = .startBalance }
+                            }
+                        }
+                        EasyButton(title: "See all my bills") { go(.bills) }
+                        EasyButton(title: "Add a bill") { store.sheet = .item(nil) }
+                    }
+                }
+                .padding(16)
+            }
+            .background { Backdrop() }
+            .navigationTitle(greetingText())
+        }
+    }
+}
+
+struct EasyOverview: View {
+    @Environment(BudgetStore.self) private var store
+    @Environment(\.palette) private var palette
+    let go: (EasyTab) -> Void
+    @State private var nextMonth = false
+
+    private func billsLine(unpaid: Int, left: Double, late: Int) -> String {
+        if unpaid == 0 { return "Every bill is paid" }
+        var line = "\(money(left)) still to pay"
+        if late > 0 { line += late == 1 ? ". 1 is late" : ". \(late) are late" }
+        return line
+    }
+
+    private func easyStatus(late: Int, soon: Int, model: Budget.CashModel, notPast: Bool) -> (level: Health, head: String) {
+        if late > 0 { return (.red, late == 1 ? "1 bill is late" : "\(late) bills are late") }
+        if notPast && model.below0 { return (.red, "Your balance may run short") }
+        if soon > 0 { return (.amber, soon == 1 ? "1 bill is due soon" : "\(soon) bills are due soon") }
+        if notPast && model.under { return (.amber, "Watch your balance") }
+        return (.green, "Everything looks good")
+    }
+
+    var body: some View {
+        let b = store.budget
+        let ym = YM.current.adding(nextMonth ? 1 : 0)
+        let t = YMD.today
+        let rows = b.rows(in: ym)
+        let bills = rows.filter { $0.item.type == .bill }
+        let ins = rows.filter { $0.item.type == .income }
+        let paidB = bills.filter { $0.isPaid }
+        let unpaidB = bills.filter { !$0.isPaid }
+        let late = unpaidB.filter { $0.due < t }
+        let soon = unpaidB.filter { $0.due >= t && $0.due.dayNumber - t.dayNumber <= 3 }
+        let expIn = ins.reduce(0.0) { $0 + $1.shownAmount }
+        let gotIn = ins.filter { $0.isPaid }.reduce(0.0) { $0 + $1.shownAmount }
+        let model = b.cashModel(ym)
+        let notPast = ym >= YM.current
+        let status = easyStatus(late: late.count, soon: soon.count, model: model, notPast: notPast)
+        let level = status.level
+        let head = status.head
+        let coming = Array(rows.filter { !$0.isPaid }.prefix(4))
+        let acct = b.easyAccount(model)
+        let s = b.stats(in: ym)
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    Picker("Month", selection: $nextMonth) {
+                        Text("This month").tag(false)
+                        Text("Next month").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    if b.items.isEmpty {
+                        EasyCard { Text("Nothing to show yet").font(.title.bold()); Text("Add your first bill and this page will fill in.").font(.title3) }
+                    } else {
+                        EasyCard(tint: level.color) {
+                            HStack(spacing: 12) {
+                                Image(systemName: level == .green ? "checkmark.circle.fill" : "exclamationmark.triangle.fill").font(.largeTitle)
+                                VStack(alignment: .leading, spacing: 2) {
+                                    Text(head).font(.title.bold())
+                                    Text(level == .green ? "Nothing needs your attention right now." : "Open Home to take care of it.").font(.title3)
+                                }
+                            }
+                        }
+                        if !bills.isEmpty {
+                            EasyCard {
+                                Text("Bills").font(.subheadline.weight(.bold))
+                                Text("\(paidB.count) of \(bills.count) paid").font(.title.bold())
+                                ProgressView(value: Double(paidB.count) / Double(max(1, bills.count))).tint(late.isEmpty ? palette.brand : Color.red).scaleEffect(x: 1, y: 2.5)
+                                Text(billsLine(unpaid: unpaidB.count, left: s.billsLeft, late: late.count)).font(.title3)
+                            }
+                        }
+                        if !ins.isEmpty {
+                            EasyCard {
+                                Text("Money in").font(.subheadline.weight(.bold))
+                                Text("\(money(gotIn, whole: true)) of \(money(expIn, whole: true))").font(.title.bold())
+                                ProgressView(value: expIn > 0 ? gotIn / expIn : 0).tint(palette.accent).scaleEffect(x: 1, y: 2.5)
+                                Text(expIn > gotIn ? "\(money(expIn - gotIn)) still to come" : "All received").font(.title3)
+                            }
+                        }
+                        if s.planned > 0 {
+                            EasyCard {
+                                Text("Everyday spending").font(.subheadline.weight(.bold))
+                                Text("\(money(s.spent, whole: true)) of \(money(s.planned, whole: true))").font(.title.bold())
+                                ProgressView(value: min(1, s.spent / s.planned)).tint(s.spent > s.planned ? Color.red : palette.primary).scaleEffect(x: 1, y: 2.5)
+                                Text(s.spent > s.planned ? "\(money(s.spent - s.planned)) over what you planned" : "\(money(s.planned - s.spent)) left to spend").font(.title3)
+                            }
+                        }
+                        if let a = acct {
+                            EasyCard {
+                                Text("Your account").font(.subheadline.weight(.bold))
+                                Text(a.headline).font(.title.bold())
+                                HStack { Text("Starts at"); Spacer(); Text(money(model.start)).bold() }
+                                HStack { Text("Lowest point"); Spacer(); Text(money(model.low)).bold() }
+                                HStack { Text("Ends at"); Spacer(); Text(money(model.end)).bold() }
+                            }
+                        } else {
+                            EasyCard {
+                                Text("Your account").font(.subheadline.weight(.bold))
+                                Text("Tell us what is in your account and we will show if you will have enough.").font(.title3)
+                                EasyButton(title: "Tell us my balance") { store.sheet = .startBalance }
+                            }
+                        }
+                        EasyCard {
+                            Text("Coming up").font(.subheadline.weight(.bold))
+                            if coming.isEmpty { Text("Nothing else this month.").font(.title3) }
+                            ForEach(coming) { r in
+                                let w = easyWhen(r.due, income: r.item.type == .income)
+                                HStack(alignment: .top) {
+                                    VStack(alignment: .leading, spacing: 2) {
+                                        Text(r.item.name).font(.title3.bold())
+                                        Text(w.text).foregroundStyle(w.late ? Color.red : Color.secondary)
+                                    }
+                                    Spacer()
+                                    Text((r.item.type == .income ? "+" : "") + money(r.item.amount)).font(.title3.bold())
+                                }
+                            }
+                        }
+                        EasyButton(title: "See all my bills") { go(.bills) }
+                    }
+                }
+                .padding(16)
+            }
+            .background { Backdrop() }
+            .navigationTitle("Overview")
+        }
+    }
+}
+
+struct EasyBills: View {
+    @Environment(BudgetStore.self) private var store
+    @State private var nextMonth = false
+
+    var body: some View {
+        let b = store.budget
+        let ym = YM.current.adding(nextMonth ? 1 : 0)
+        let rows = b.rows(in: ym)
+        let toPay = rows.filter { !$0.isPaid && $0.item.type == .bill }
+        let coming = rows.filter { !$0.isPaid && $0.item.type == .income }
+        let done = rows.filter { $0.isPaid }
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 14) {
+                    Picker("Month", selection: $nextMonth) {
+                        Text("This month").tag(false)
+                        Text("Next month").tag(true)
+                    }
+                    .pickerStyle(.segmented)
+                    Text(ym.title).font(.subheadline).foregroundStyle(.secondary)
+                    if rows.isEmpty {
+                        EasyCard { Text("Nothing here yet.").font(.title3) }
+                    }
+                    if !toPay.isEmpty { Text("Bills to pay").font(.title3.bold()); ForEach(toPay) { EasyBillRow(row: $0) } }
+                    if !coming.isEmpty { Text("Money coming in").font(.title3.bold()); ForEach(coming) { EasyBillRow(row: $0) } }
+                    if !done.isEmpty { Text("Done").font(.title3.bold()); ForEach(done) { EasyBillRow(row: $0) } }
+                    EasyButton(title: "Add a bill", prominent: true) { store.sheet = .item(nil) }
+                }
+                .padding(16)
+            }
+            .background { Backdrop() }
+            .navigationTitle("My bills")
+        }
+    }
+}
+
+struct EasyBillRow: View {
+    @Environment(BudgetStore.self) private var store
+    let row: BillRow
+
+    var body: some View {
+        let isIncome = row.item.type == .income
+        let w = easyWhen(row.due, income: isIncome)
+        let verb = isIncome ? "Received" : "Paid"
+        let paidOn = YMD(iso: row.pay?.on ?? "")?.nice ?? ""
+        let lateTint: Color? = (!row.isPaid && w.late) ? Color.red : nil
+        EasyCard(tint: lateTint) {
+            HStack {
+                Text(row.item.name).font(.title3.bold())
+                Spacer()
+                Text(money(row.shownAmount)).font(.title3.bold())
+            }
+            if row.isPaid {
+                Label("\(verb) \(paidOn)", systemImage: "checkmark").font(.headline).foregroundStyle(Color.green)
+            } else {
+                Label(w.text, systemImage: w.late ? "exclamationmark.triangle.fill" : "calendar").font(.headline).foregroundStyle(w.late ? Color.red : Color.primary)
+                if let note = store.budget.linkWords(for: row.item) { Text(note).font(.callout) }
+            }
+            if !row.isPaid && row.item.automatic {
+                Text("This one \(isIncome ? "arrives" : "pays") by itself on its date.").font(.callout)
+            } else if !row.isPaid {
+                EasyButton(title: isIncome ? "I got paid" : "I paid it", icon: "checkmark", prominent: true) { store.setPaid(row, true) }
+            } else if !row.item.automatic {
+                EasyButton(title: "Undo") { store.setPaid(row, false) }
+            }
+            Button("Change or remove") { store.sheet = .item(row.item) }
+                .font(.callout)
+                .underline()
+                .frame(maxWidth: .infinity, minHeight: 44)
+        }
+    }
+}
+
+struct EasyMore: View {
+    @Environment(BudgetStore.self) private var store
+    @AppStorage("easyMode") private var easy = false
+    @AppStorage("easyXL") private var extraLarge = false
+    @State private var backupURL: URL?
+
+    var body: some View {
+        let b = store.budget
+        let start = b.cashStart(YM.current, b.cash)
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: 16) {
+                    EasyCard {
+                        Text("Print size").font(.subheadline.weight(.bold))
+                        Picker("Print size", selection: $extraLarge) {
+                            Text("Large").tag(false)
+                            Text("Extra large").tag(true)
+                        }
+                        .pickerStyle(.segmented)
+                    }
+                    EasyCard {
+                        Text("My account balance").font(.subheadline.weight(.bold))
+                        Text(start.kind == .unset ? "Not set yet." : "About \(money(start.v)) on the 1st of \(Calendar.current.monthSymbols[YM.current.m - 1]).").font(.title3)
+                        EasyButton(title: start.kind == .unset ? "Tell us my balance" : "Change my balance") { store.sheet = .startBalance }
+                    }
+                    if store.library.budgets.count > 1 {
+                        EasyCard {
+                            Text("My budgets").font(.subheadline.weight(.bold))
+                            Text("Showing: \(b.name)").font(.title3)
+                            ForEach(store.library.budgets.filter { $0.id != store.library.activeID }) { o in
+                                EasyButton(title: "Show \(o.name)") { store.switchBudget(o.id) }
+                            }
+                        }
+                    }
+                    EasyCard {
+                        Text("Keep a copy").font(.subheadline.weight(.bold))
+                        Text("Save a backup copy of your budget on this phone, in case you ever need it.").font(.title3)
+                        if let url = backupURL {
+                            ShareLink(item: url) {
+                                Label("Save a backup copy", systemImage: "square.and.arrow.up").font(.title3.weight(.bold)).frame(maxWidth: .infinity, minHeight: 56)
+                            }
+                            .themedButton()
+                            .controlSize(.large)
+                        }
+                    }
+                    EasyCard {
+                        Text("The full app").font(.subheadline.weight(.bold))
+                        Text("It has charts, spending budgets, loans, colors and more.").font(.title3)
+                        EasyButton(title: "Use the full app") { easy = false }
+                    }
+                    Text("TapBudget version \(AppInfo.version)").font(.footnote).foregroundStyle(.secondary)
+                }
+                .padding(16)
+            }
+            .background { Backdrop() }
+            .navigationTitle("More")
+            .task { backupURL = store.backupFileURL() }
         }
     }
 }
