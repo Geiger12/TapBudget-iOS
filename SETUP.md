@@ -9,7 +9,7 @@ What is in it
 - `TapBudget/Assets.xcassets`: the app icon (your artwork, cropped to exactly 1024 x 1024, no transparency) and accent color
 - `TapBudget/PrivacyInfo.xcprivacy`: says the app tracks nothing and collects nothing
 - `Config/Info.plist`: tells App Store Connect the app uses no non-exempt encryption, so uploads do not stop to ask
-- Settings: bundle ID `com.tapbudget.app`, version 2.0, iPhone only, minimum iOS 26.0, automatic signing
+- Settings: bundle ID `com.tapbudget.app`, version 2.1, iPhone only, minimum iOS 26.0, automatic signing
 
 You need a paid Apple Developer Program membership. If you are not sure whether yours is an individual or an
 organization account, that is fine: both work.
@@ -73,6 +73,36 @@ Signing & Capabilities and here.
 
 Internal testers get a build as soon as it finishes processing. Only external testers need Beta App Review.
 
+## Backup files (new in 2.1)
+
+A backup is one budget saved as a `.json` file. It is the same file the web app saves, so a budget can move
+either way between the web app and the iPhone app.
+
+- **Save:** Settings > Back up > **Save a backup to Files**. Pick a folder (On My iPhone or iCloud Drive) and
+  tap Save. The file is named like the web app's: `budget-household-2026-11-24.json`. The section then shows
+  the day this budget was last saved.
+- **Send:** **Send a backup…** opens the share sheet for AirDrop, Messages, Mail or Save to Files.
+- **Import:** **Import from Files…** and tap the file. Or, in the Files app, tap and hold the file, then
+  Share > TapBudget. Either way the app shows what is in it (name, items, loans and cards, paid history,
+  balances) before anything changes.
+- **Choose:** **Add as a new budget** keeps everything already on the phone. If a budget with the same name is
+  already there, **Replace** swaps its bills, payments, loans and balances for the backup's, after a confirm.
+- **Paste:** **Paste a backup…** still takes the file's text, for when a file is not handy.
+- A broken entry in a file is skipped rather than stopping the import. Share links from the web app are not
+  read here, so save a backup file in the web app instead.
+- Files handed over by another app are deleted from TapBudget's inbox once read. A backup holds personal
+  finance details, so keep it out of the repository and shared folders.
+
+### Try it on the iPhone (not tested yet)
+
+1. Save a backup to Files, then find it in the Files app.
+2. Import that same file: the preview should show the budget's name and counts, and "Add as a new budget"
+   should add "Name (2)".
+3. Import it again and choose Replace. The budget should match the file.
+4. Save a backup from the web app in Safari, import it here, and check the totals match.
+5. In Files, Share > TapBudget on a backup file. TapBudget should open with the preview.
+6. Cancel the Save sheet: no message should appear and the "last saved" date should not change.
+
 ## If something goes wrong
 
 - Build fails with a Swift error: open the build log (Report navigator > the failed build > the Build step) and
@@ -80,20 +110,10 @@ Internal testers get a build as soon as it finishes processing. Only external te
 - "No account for team" or a signing error: step 2, pick the team and push again.
 - "Bundle identifier is not available": see step 4.
 - "Build number already used": Apple's page "Setting the next build number for Xcode Cloud builds" shows how to
-  raise it, or raise `MARKETING_VERSION` (currently 2.0) in the target and push.
-- To start with your real budget: in the app, Settings > Back up > Import a backup, and paste in a backup file
-  saved from the web app.
+  raise it, or raise `MARKETING_VERSION` (currently 2.1) in the target and push.
+- To start with your real budget: save a backup file from the web app to Files, then in the app choose
+  Settings > Back up > Import from Files. See "Backup files" below.
 
 Needed later for the App Store (not for TestFlight): privacy policy URL
 https://tapbudget-ashy.vercel.app/about/privacy.html, the App Privacy answers (the privacy manifest in this
 project says no data is collected), and screenshots.
-
-## Updating a build you already have in TestFlight
-
-You only need to replace the two Swift files and push. Xcode Cloud builds on every push to main and gives each
-build its own number (the number shows in the app's menu, for example "version 2.0 (12)").
-
-1. On github.com open your `TapBudget-iOS` repository, then the `TapBudget` folder.
-2. Add file > Upload files, drag in the new `App.swift` and `ContentView.swift` (same names), and Commit.
-3. Watch the build in Xcode's Report navigator or in App Store Connect > Xcode Cloud. When it finishes and
-   processes, the new build appears in the TestFlight app on your iPhone.
