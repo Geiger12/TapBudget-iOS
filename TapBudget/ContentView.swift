@@ -359,11 +359,37 @@ struct WallpaperSettings: Codable, Hashable {
     }
 }
 
+/// The look of the three gauges at the top of Overview.
+enum GaugeStyle: String, Codable, CaseIterable, Identifiable {
+    case rings, thin, arc, bars, capsules
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .rings: return "Rings"
+        case .thin: return "Thin rings"
+        case .arc: return "Arcs"
+        case .bars: return "Bars"
+        case .capsules: return "Meters"
+        }
+    }
+    var detail: String {
+        switch self {
+        case .rings: return "Round gauges with a soft glow"
+        case .thin: return "Light and airy, with big numbers"
+        case .arc: return "Open gauges, like a dial"
+        case .bars: return "One compact card with three bars"
+        case .capsules: return "Tall meters that fill up"
+        }
+    }
+}
+
 struct Theme: Codable, Hashable {
     var colors = ThemeColors()
     var look: LookKind = .glass
     var switchKind: SwitchKind = .classic
     var wallpaper = WallpaperSettings()
+    var gauge: GaugeStyle = .rings
+    var gaugeAmounts = true                 // a plain-words line under each gauge, such as "$735 to pay"
 
     init() {}
 
@@ -374,6 +400,8 @@ struct Theme: Codable, Hashable {
         look = (try? c.decodeIfPresent(LookKind.self, forKey: .look)) ?? .glass
         switchKind = (try? c.decodeIfPresent(SwitchKind.self, forKey: .switchKind)) ?? .classic
         wallpaper = (try? c.decodeIfPresent(WallpaperSettings.self, forKey: .wallpaper)) ?? WallpaperSettings()
+        gauge = (try? c.decodeIfPresent(GaugeStyle.self, forKey: .gauge)) ?? .rings
+        gaugeAmounts = (try? c.decodeIfPresent(Bool.self, forKey: .gaugeAmounts)) ?? true
     }
 }
 
@@ -900,6 +928,93 @@ extension Budget {
         }
         return nil
     }
+}
+
+// MARK: - The cash flow chart's vertical scale
+
+/// A tidy vertical scale: even steps (1, 2, 2.5 or 5 times a power of ten), with the first and last tick as the chart's edges.
+struct ChartAxis: Equatable {
+    var lo: Double
+    var hi: Double
+    var step: Double
+    var ticks: [Double] {
+        let n = max(1, Int(((hi - lo) / step).rounded()))
+        return (0...n).map { lo + Double($0) * step }
+    }
+}
+
+func niceStep(_ raw: Double) -> Double {
+    guard raw > 0, raw.isFinite else { return 100 }
+    let mag = pow(10, floor(log10(raw)))
+    for m in [1.0, 2.0, 2.5, 5.0, 10.0] where m * mag >= raw - 1e-9 { return m * mag }
+    return 10 * mag
+}
+
+/// The vertical scale for the part of the chart that is on screen.
+/// - values: every balance that is on screen (the line, the old plan, the balances you typed, the bars)
+/// - warn: the low balance line; it is kept in view when it is close to the balance, and left out when it is far away
+/// - fixedSpan: 0 fits what you see; otherwise the chart is exactly that many dollars tall, centred on what you see
+func chartAxis(values: [Double], warn: Double, fixedSpan: Double = 0) -> ChartAxis {
+    let vmin = values.min(), vmax = values.max()
+    if fixedSpan > 0 {
+        let mid = (vmin != nil && vmax != nil) ? (vmin! + vmax!) / 2 : fixedSpan / 2 - fixedSpan / 10
+        let step = fixedSpan / 5
+        let lo = ((mid - fixedSpan / 2) / step).rounded(.down) * step
+        return ChartAxis(lo: lo, hi: lo + fixedSpan, step: step)
+    }
+    var lo = vmin ?? 0
+    var hi = vmax ?? 2000
+    let slack = max(hi - lo, 500)
+    if warn >= lo - slack && warn <= hi + slack { lo = min(lo, warn); hi = max(hi, warn) }       // keep the low-balance line in view when it is near
+    if lo > 0 && lo < (hi - lo) * 0.5 { lo = 0 }                                                   // show the $0 line when the balance is near it
+    let atZero = lo == 0
+    if hi - lo < 500 { let mid = (hi + lo) / 2; lo = mid - 250; hi = mid + 250 }                    // a flat line does not zoom in absurdly far
+    let pad = (hi - lo) * 0.06
+    if !atZero { lo -= pad }
+    hi += pad
+    let step = niceStep((hi - lo) / 5)
+    lo = (lo / step).rounded(.down) * step
+    hi = (hi / step).rounded(.up) * step
+    return ChartAxis(lo: lo, hi: hi, step: step)
+}
+
+// MARK: - The three gauges on Overview
+
+enum GaugeKind { case bills, moneyIn, spending }
+
+struct GaugeFigure: Identifiable {
+    var kind: GaugeKind
+    var title: String
+    var fraction: Double                // 0 to 1, and above 1 when spending is over the plan
+    var center: String                  // what is written inside: "11/13", "100%"
+    var detail: String                  // a plain-words line: "$735 to pay", "All received", "$220 left"
+    var over = false
+    var empty = false                   // nothing to measure yet
+    var id: String { title }
+    var spoken: String { "\(title): \(center). \(detail)" }
+}
+
+func gaugeFigures(_ s: MonthStats) -> [GaugeFigure] {
+    func percent(_ f: Double) -> String { "\(Int((f * 100).rounded()))%" }
+    let billsFrac = s.billsTotal == 0 ? 0.0 : Double(s.billsPaid) / Double(s.billsTotal)
+    let inFrac = s.inExpected == 0 ? 0.0 : s.inReceived / s.inExpected
+    let spendFrac = s.planned == 0 ? 0.0 : s.spent / s.planned
+    let toCome = s.inExpected - s.inReceived
+    return [
+        GaugeFigure(kind: .bills, title: "Bills", fraction: billsFrac,
+                    center: s.billsTotal == 0 ? "–" : "\(s.billsPaid)/\(s.billsTotal)",
+                    detail: s.billsTotal == 0 ? "No bills" : (s.billsLeft >= 0.5 ? "\(money(s.billsLeft, whole: true)) to pay" : "All paid"),
+                    empty: s.billsTotal == 0),
+        GaugeFigure(kind: .moneyIn, title: "Money in", fraction: inFrac,
+                    center: s.inExpected == 0 ? "–" : percent(inFrac),
+                    detail: s.inExpected == 0 ? "No money in" : (toCome >= 0.5 ? "\(money(toCome, whole: true)) to come" : "All received"),
+                    empty: s.inExpected == 0),
+        GaugeFigure(kind: .spending, title: "Spending", fraction: spendFrac,
+                    center: s.planned == 0 ? "–" : percent(spendFrac),
+                    detail: s.planned == 0 ? "No budget" : (s.spent > s.planned + 0.5 ? "\(money(s.spent - s.planned, whole: true)) over" : "\(money(max(0, s.planned - s.spent), whole: true)) left"),
+                    over: s.planned > 0 && s.spent > s.planned + 0.5,
+                    empty: s.planned == 0)
+    ]
 }
 
 // MARK: - The store: saving, automatic payments, and every change the screens make
@@ -1489,13 +1604,14 @@ struct MonthBar: View {
         }
         .padding(.horizontal, 16)
         .padding(.vertical, 6)
+        .frame(maxWidth: .infinity)
         .background {
-            // frosted, fading out below, so what scrolls underneath never shows through the pills
+            // frosted, fading out below, so what scrolls underneath never shows through the pills.
+            // It is as wide as the screen and stays inside the bar's own space, so it never covers the title above it.
             Rectangle()
                 .fill(.regularMaterial)
-                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.72), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
+                .mask(LinearGradient(stops: [.init(color: .black, location: 0), .init(color: .black, location: 0.7), .init(color: .clear, location: 1)], startPoint: .top, endPoint: .bottom))
                 .padding(.bottom, -14)
-                .ignoresSafeArea(edges: .top)
                 .allowsHitTesting(false)
         }
     }
@@ -1673,55 +1789,6 @@ struct OverviewTab: View {
             .background { Backdrop() }
             .budgetChrome("Overview")
         }
-    }
-}
-
-struct RingChip: View {
-    let title: String
-    let value: Double
-    let label: String
-    let tint: Color
-
-    var body: some View {
-        VStack(spacing: 8) {
-            ZStack {
-                Circle().stroke(Color.primary.opacity(0.12), lineWidth: 9)
-                Circle()
-                    .trim(from: 0, to: max(0.001, min(1, value)))
-                    .stroke(tint, style: StrokeStyle(lineWidth: 9, lineCap: .round))
-                    .rotationEffect(.degrees(-90))
-                Text(label).font(.subheadline.bold()).monospacedDigit()
-            }
-            .frame(width: 84, height: 84)
-            Text(title).font(.footnote.weight(.semibold))
-        }
-        .padding(14)
-        .surface(RoundedRectangle(cornerRadius: 24))
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(title): \(label)")
-    }
-}
-
-struct GaugeStrip: View {
-    @Environment(BudgetStore.self) private var store
-    @Environment(\.palette) private var palette
-    var body: some View {
-        let s = store.budget.stats(in: store.viewing)
-        let billsFrac = s.billsTotal == 0 ? 0.0 : Double(s.billsPaid) / Double(s.billsTotal)
-        let inFrac = s.inExpected == 0 ? 0.0 : s.inReceived / s.inExpected
-        let spendFrac = s.planned == 0 ? 0.0 : s.spent / s.planned
-        let inLabel = s.inExpected == 0 ? "–" : "\(Int((inFrac * 100).rounded()))%"
-        let spendLabel = s.planned == 0 ? "–" : "\(Int((spendFrac * 100).rounded()))%"
-        ScrollView(.horizontal, showsIndicators: false) {
-            GlassEffectContainer(spacing: 12) {
-                HStack(spacing: 12) {
-                    RingChip(title: "Bills", value: billsFrac, label: "\(s.billsPaid)/\(s.billsTotal)", tint: palette.brand)
-                    RingChip(title: "Money in", value: inFrac, label: inLabel, tint: palette.accent)
-                    RingChip(title: "Spending", value: spendFrac, label: spendLabel, tint: spendFrac > 1 ? Color.red : palette.primary)
-                }
-            }
-        }
-        .scrollClipDisabled()
     }
 }
 
@@ -2179,6 +2246,29 @@ struct CashExplorer: View {
     @State private var nowText = ""
     @State private var nowDay = Date()
     @State private var formError: String?
+    @AppStorage("explorerYSpan") private var ySpan = 0.0           // 0 = fit what is on screen, otherwise the chart's height in dollars
+
+    /// Every balance that is on screen right now, so the vertical scale can fit it.
+    private func onScreenValues(_ s: Budget.Series, _ b: Budget) -> [Double] {
+        let start = scrollDate
+        let end = scrollDate.addingTimeInterval(visibleDays * 86400)
+        func inView(_ pts: [Budget.SeriesPoint]) -> [Double] {
+            var v = pts.filter { $0.date >= start && $0.date <= end }.map(\.value)
+            if let before = pts.last(where: { $0.date < start }) { v.append(before.value) }      // a step that began before the left edge is still on screen
+            return v
+        }
+        var values = inView(s.points)
+        if let plan { values += inView(plan.points) }
+        for a in b.cash.actuals {
+            if let d = YMD(iso: a.d)?.date, d >= start, d <= end { values.append(a.v) }
+        }
+        if visibleDays <= 80 {
+            for st in s.steps where !st.isActual && st.date >= start && st.date <= end { values.append(st.before); values.append(st.after) }
+        }
+        return values
+    }
+
+    private func axisLabel(_ d: Double) -> String { abs(d) >= 10_000 ? kfmt(d) : money(d, whole: true) }
 
     private var maxDays: Double {
         guard let s = series else { return 365 }
@@ -2226,6 +2316,7 @@ struct CashExplorer: View {
         let lastActual = b.cash.actuals.last
         let sel = nearestStep(s)
         let presets: [(String, Double)] = [("1 month", 31), ("3 months", 92), ("6 months", 183), ("1 year", 365)]
+        let axis = chartAxis(values: onScreenValues(s, b), warn: b.cash.warn, fixedSpan: ySpan)
 
         GlassEffectContainer(spacing: 10) {
             HStack(spacing: 10) {
@@ -2260,6 +2351,16 @@ struct CashExplorer: View {
                         .themedButton()
                         .tint(abs(visibleDays - p.1) < p.1 * 0.12 ? palette.primary : nil)
                 }
+                Menu {
+                    Picker("Chart height", selection: $ySpan) {
+                        Text("Auto: fit what I see").tag(0.0)
+                        ForEach([2_500.0, 5_000, 10_000, 20_000, 50_000], id: \.self) { v in Text("\(money(v, whole: true)) tall").tag(v) }
+                    }
+                } label: {
+                    Label(ySpan == 0 ? "Scale: auto" : "Scale: \(money(ySpan, whole: true))", systemImage: "arrow.up.and.down")
+                }
+                .menuStyle(.button)
+                .themedButton()
             }
         }
 
@@ -2310,13 +2411,21 @@ struct CashExplorer: View {
         .chartXVisibleDomain(length: visibleDays * 86400)
         .chartScrollPosition(x: $scrollDate)
         .chartXSelection(value: $selected)
+        .chartYScale(domain: axis.lo...axis.hi)
         .chartYAxis {
-            AxisMarks(position: .leading) { v in
+            AxisMarks(position: .leading, values: axis.ticks) { v in
                 AxisGridLine()
-                AxisValueLabel { if let d = v.as(Double.self) { Text(kfmt(d)).font(.caption2) } }
+                AxisValueLabel { if let d = v.as(Double.self) { Text(axisLabel(d)).font(.caption2) } }
             }
         }
-        .frame(height: 270)
+        .chartXAxis {
+            AxisMarks(values: .automatic(desiredCount: 4)) { _ in
+                AxisGridLine()
+                AxisValueLabel(format: visibleDays > 200 ? Date.FormatStyle().month(.abbreviated) : Date.FormatStyle().month(.abbreviated).day())
+            }
+        }
+        .chartPlotStyle { plot in plot.clipped() }
+        .frame(height: 290)
         .simultaneousGesture(
             MagnifyGesture()
                 .onChanged { v in visibleDays = min(max(baseDays / v.magnification, 7), maxDays) }
@@ -2333,7 +2442,7 @@ struct CashExplorer: View {
     }
 
     private func caption(_ st: Budget.SeriesStep?) -> String {
-        guard let st else { return "Drag to move. Pinch, or use + and −, to zoom. Tap a bar for details." }
+        guard let st else { return "Drag to move. Pinch, or use + and −, to zoom. Tap a bar for details. Scale changes how tall the chart is." }
         if st.isActual { return "\(st.due.nice): you typed your balance, \(money(st.after)) (the plan said \(money(st.before)))." }
         return "\(st.due.nice): \(st.name) \(st.amt > 0 ? "+" : "−")\(money(abs(st.amt))). Balance after: \(money(st.after))."
     }
@@ -3420,6 +3529,7 @@ struct ThemeSheet: View {
                 }
                 wallpaperSection(t)
                 lookSection(t)
+                gaugeSection(t)
                 switchSection(t)
                 colorSection(t)
             }
@@ -3486,6 +3596,36 @@ struct ThemeSheet: View {
             Text("Look")
         } footer: {
             Text("Flat keeps the cards, pills and menu solid. Glass makes them see-through Liquid Glass. The tab bar and the bars at the top are always the system's glass on iOS 26 and later.")
+        }
+    }
+
+    // MARK: Gauges
+
+    @ViewBuilder private func gaugeSection(_ t: Theme) -> some View {
+        Section {
+            LazyVGrid(columns: [GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10), GridItem(.flexible(), spacing: 10)], spacing: 10) {
+                ForEach(GaugeStyle.allCases) { g in
+                    Button { store.setTheme { $0.gauge = g } } label: {
+                        VStack(spacing: 8) {
+                            GaugeSample(style: g, tint: Color(hex: t.colors.brand))
+                                .frame(height: 54)
+                            Text(g.title).font(.caption.weight(.semibold)).foregroundStyle(Color.primary).multilineTextAlignment(.center)
+                        }
+                        .padding(.vertical, 10)
+                        .padding(.horizontal, 6)
+                        .frame(maxWidth: .infinity)
+                        .overlay(RoundedRectangle(cornerRadius: 14).strokeBorder(t.gauge == g ? Color(hex: t.colors.primary) : Color.secondary.opacity(0.3), lineWidth: t.gauge == g ? 2.5 : 1))
+                    }
+                    .buttonStyle(.plain)
+                    .accessibilityLabel("\(g.title). \(g.detail)")
+                    .accessibilityAddTraits(t.gauge == g ? .isSelected : [])
+                }
+            }
+            Toggle("Show a line under each gauge", isOn: Binding(get: { store.budget.theme.gaugeAmounts }, set: { v in store.setTheme { $0.gaugeAmounts = v } }))
+        } header: {
+            Text("Gauges")
+        } footer: {
+            Text("The three gauges at the top of Overview: Bills, Money in and Spending. The line under each says what is left, such as “$735 to pay”.")
         }
     }
 
@@ -4213,6 +4353,239 @@ struct RestoreSheet: View {
             } else {
                 ContentUnavailableView("Nothing to restore", systemImage: "doc.questionmark", description: Text("Choose a backup file first."))
                     .toolbar { ToolbarItem(placement: .cancellationAction) { Button("Close") { dismiss() } } }
+            }
+        }
+    }
+}
+
+// MARK: - The three gauges on Overview: five looks, chosen in Wallpaper and colors
+
+struct GaugeStrip: View {
+    @Environment(BudgetStore.self) private var store
+    @Environment(\.palette) private var palette
+
+    private func tint(_ f: GaugeFigure) -> Color {
+        switch f.kind {
+        case .bills: return palette.brand
+        case .moneyIn: return palette.accent
+        case .spending: return f.over ? Color.red : palette.primary
+        }
+    }
+
+    var body: some View {
+        let t = store.budget.theme
+        let figures = gaugeFigures(store.budget.stats(in: store.viewing))
+        if t.gauge == .bars {
+            GaugeBars(figures: figures, tint: tint, showDetail: t.gaugeAmounts)
+        } else {
+            HStack(spacing: 10) {
+                ForEach(figures) { f in
+                    GaugeTile(figure: f, tint: tint(f), style: t.gauge, showDetail: t.gaugeAmounts)
+                }
+            }
+        }
+    }
+}
+
+struct GaugeTile: View {
+    let figure: GaugeFigure
+    let tint: Color
+    let style: GaugeStyle
+    let showDetail: Bool
+
+    var body: some View {
+        VStack(spacing: 8) {
+            dial
+            VStack(spacing: 2) {
+                Text(figure.title).font(.footnote.weight(.semibold))
+                if showDetail {
+                    Text(figure.detail)
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.75)
+                }
+            }
+        }
+        .padding(.horizontal, 10)
+        .padding(.vertical, 14)
+        .frame(maxWidth: .infinity)
+        .surface(RoundedRectangle(cornerRadius: 24))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(figure.spoken)
+    }
+
+    @ViewBuilder private var dial: some View {
+        switch style {
+        case .thin: RingDial(figure: figure, tint: tint, thin: true)
+        case .arc: ArcDial(figure: figure, tint: tint)
+        case .capsules: MeterDial(figure: figure, tint: tint)
+        default: RingDial(figure: figure, tint: tint, thin: false)
+        }
+    }
+}
+
+/// A full ring with a soft glow, or a thin one with a bigger number.
+struct RingDial: View {
+    let figure: GaugeFigure
+    let tint: Color
+    var thin = false
+
+    var body: some View {
+        let f = min(1, max(0, figure.fraction))
+        let w: CGFloat = thin ? 4 : 11
+        ZStack {
+            Circle().stroke(Color.primary.opacity(0.10), lineWidth: w)
+            Circle()
+                .trim(from: 0, to: max(0.004, f))
+                .stroke(AngularGradient(colors: [tint.opacity(thin ? 1 : 0.55), tint], center: .center, startAngle: .degrees(0), endAngle: .degrees(max(8, 360 * f))),
+                        style: StrokeStyle(lineWidth: w, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+                .shadow(color: tint.opacity(thin ? 0 : 0.40), radius: 5)
+            Text(figure.center)
+                .font(.system(size: thin ? 27 : 21, weight: thin ? .semibold : .bold, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .padding(.horizontal, w + 6)
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .frame(maxWidth: 96)
+        .animation(.snappy, value: f)
+    }
+}
+
+/// An open gauge, three quarters of a circle, like a dial.
+struct ArcDial: View {
+    let figure: GaugeFigure
+    let tint: Color
+
+    var body: some View {
+        let f = min(1, max(0, figure.fraction))
+        ZStack {
+            Circle()
+                .trim(from: 0, to: 0.75)
+                .stroke(Color.primary.opacity(0.10), style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                .rotationEffect(.degrees(135))
+            Circle()
+                .trim(from: 0, to: max(0.004, 0.75 * f))
+                .stroke(AngularGradient(colors: [tint.opacity(0.55), tint], center: .center, startAngle: .degrees(0), endAngle: .degrees(max(8, 270 * f))),
+                        style: StrokeStyle(lineWidth: 10, lineCap: .round))
+                .rotationEffect(.degrees(135))
+                .shadow(color: tint.opacity(0.35), radius: 4)
+            Text(figure.center)
+                .font(.system(size: 21, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+                .padding(.horizontal, 14)
+        }
+        .aspectRatio(1, contentMode: .fit)
+        .frame(maxWidth: 96)
+        .animation(.snappy, value: f)
+    }
+}
+
+/// A tall meter that fills from the bottom, with the number underneath.
+struct MeterDial: View {
+    let figure: GaugeFigure
+    let tint: Color
+
+    var body: some View {
+        let f = min(1, max(0, figure.fraction))
+        VStack(spacing: 8) {
+            GeometryReader { g in
+                ZStack(alignment: .bottom) {
+                    RoundedRectangle(cornerRadius: 18).fill(Color.primary.opacity(0.10))
+                    RoundedRectangle(cornerRadius: 18)
+                        .fill(LinearGradient(colors: [tint, tint.opacity(0.6)], startPoint: .top, endPoint: .bottom))
+                        .frame(height: max(14, g.size.height * f))
+                        .shadow(color: tint.opacity(0.35), radius: 5)
+                }
+            }
+            .frame(width: 40, height: 96)
+            Text(figure.center)
+                .font(.system(size: 19, weight: .bold, design: .rounded))
+                .monospacedDigit()
+                .lineLimit(1)
+                .minimumScaleFactor(0.6)
+        }
+        .animation(.snappy, value: f)
+    }
+}
+
+/// One compact card with three bars.
+struct GaugeBars: View {
+    let figures: [GaugeFigure]
+    let tint: (GaugeFigure) -> Color
+    let showDetail: Bool
+
+    var body: some View {
+        VStack(spacing: 16) {
+            ForEach(figures) { f in
+                VStack(alignment: .leading, spacing: 7) {
+                    HStack(alignment: .firstTextBaseline) {
+                        Text(f.title).font(.subheadline.weight(.semibold))
+                        Spacer()
+                        Text(f.center).font(.system(.subheadline, design: .rounded).weight(.bold)).monospacedDigit()
+                    }
+                    GeometryReader { g in
+                        ZStack(alignment: .leading) {
+                            Capsule().fill(Color.primary.opacity(0.10))
+                            Capsule()
+                                .fill(LinearGradient(colors: [tint(f).opacity(0.6), tint(f)], startPoint: .leading, endPoint: .trailing))
+                                .frame(width: max(12, g.size.width * min(1, max(0, f.fraction))))
+                        }
+                    }
+                    .frame(height: 12)
+                    if showDetail { Text(f.detail).font(.caption).foregroundStyle(.secondary) }
+                }
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(f.spoken)
+            }
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity)
+        .surface(RoundedRectangle(cornerRadius: 26))
+        .animation(.snappy, value: figures.map(\.fraction))
+    }
+}
+
+/// A small picture of a style, for the chooser in Wallpaper and colors.
+struct GaugeSample: View {
+    let style: GaugeStyle
+    let tint: Color
+
+    var body: some View {
+        switch style {
+        case .rings, .thin:
+            let w: CGFloat = style == .rings ? 8 : 3
+            ZStack {
+                Circle().stroke(Color.primary.opacity(0.12), lineWidth: w)
+                Circle().trim(from: 0, to: 0.7).stroke(tint, style: StrokeStyle(lineWidth: w, lineCap: .round)).rotationEffect(.degrees(-90))
+            }
+            .frame(width: 50, height: 50)
+        case .arc:
+            ZStack {
+                Circle().trim(from: 0, to: 0.75).stroke(Color.primary.opacity(0.12), style: StrokeStyle(lineWidth: 7, lineCap: .round))
+                Circle().trim(from: 0, to: 0.75 * 0.7).stroke(tint, style: StrokeStyle(lineWidth: 7, lineCap: .round))
+            }
+            .rotationEffect(.degrees(135))
+            .frame(width: 50, height: 50)
+        case .bars:
+            VStack(spacing: 7) {
+                ForEach([0.9, 0.6, 0.35], id: \.self) { f in
+                    Capsule().fill(Color.primary.opacity(0.12)).frame(height: 7)
+                        .overlay(alignment: .leading) { Capsule().fill(tint).frame(width: 60 * f, height: 7) }
+                }
+            }
+            .frame(width: 60)
+        case .capsules:
+            HStack(spacing: 6) {
+                ForEach([0.85, 0.55, 0.3], id: \.self) { f in
+                    RoundedRectangle(cornerRadius: 6).fill(Color.primary.opacity(0.12)).frame(width: 14, height: 50)
+                        .overlay(alignment: .bottom) { RoundedRectangle(cornerRadius: 6).fill(tint).frame(width: 14, height: 50 * f) }
+                }
             }
         }
     }
