@@ -6,7 +6,7 @@ Apple's cloud, and TestFlight puts it on your iPhone. Your Mac is only needed on
 What is in it
 - `TapBudget.xcodeproj` with a shared `TapBudget` scheme (Xcode Cloud only sees shared schemes)
 - `TapBudget/App.swift` and `TapBudget/ContentView.swift`: the app
-- `TapBudget/Assets.xcassets`: the app icon (your artwork, cropped to exactly 1024 x 1024, no transparency) and accent color
+- `TapBudget/Assets.xcassets`: the app icon (the navy icon, the same as your web app, cropped to exactly 1024 x 1024 with no transparency) and the accent color
 - `TapBudget/PrivacyInfo.xcprivacy`: says the app tracks nothing and collects nothing
 - `Config/Info.plist`: tells App Store Connect the app uses no non-exempt encryption, so uploads do not stop to ask
 - Settings: bundle ID `com.tapbudget.app`, version 2.0, iPhone only, minimum iOS 26.0, automatic signing
@@ -90,10 +90,15 @@ project says no data is collected), and screenshots.
 
 ## Updating a build you already have in TestFlight
 
-You only need to replace the two Swift files and push. Xcode Cloud builds on every push to main and gives each
-build its own number (the number shows in the app's menu, for example "version 2.0 (12)").
+Copy these files over the ones in your repository, then commit to main. Xcode Cloud builds on every push and gives
+each build its own number (it shows in the app's menu, for example "version 2.0 (12)").
 
-1. On github.com open your `TapBudget-iOS` repository, then the `TapBudget` folder.
-2. Add file > Upload files, drag in the new `App.swift` and `ContentView.swift` (same names), and Commit.
-3. Watch the build in Xcode's Report navigator or in App Store Connect > Xcode Cloud. When it finishes and
-   processes, the new build appears in the TestFlight app on your iPhone.
+- `TapBudget/ContentView.swift` and `TapBudget/App.swift`: the app
+- `TapBudget/Assets.xcassets/AppIcon.appiconset/icon-1024.png`: the navy app icon, to match the web app
+
+Do NOT copy `TapBudget.xcodeproj` over yours. It holds the Team you chose in Xcode, and a fresh copy would clear it
+and break signing. Only copy it into a brand new repository.
+
+On github.com: open the repository, then the `TapBudget` folder, tap Add file, then Upload files, drag the files in
+(keeping their folders), and Commit. Watch the build in Xcode's Report navigator or in App Store Connect under
+Xcode Cloud. When it finishes and processes, the new build appears in the TestFlight app on your iPhone.
