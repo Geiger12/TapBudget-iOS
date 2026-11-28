@@ -8,42 +8,48 @@
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#f4f4f5" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#111214" media="(prefers-color-scheme: dark)">
-<link rel="icon" href="img/icon-192.png" type="image/png">
+<link rel="icon" href="app-icon.png" type="image/png">
+<link rel="apple-touch-icon" href="app-icon.png">
 <style>
-:root{color-scheme:light dark;--bg:#f4f4f5;--surface:#ffffff;--text:#1d1e21;--muted:#64666b;--border:#e7e7ea;--solid:#232428;--on-solid:#ffffff;--green:#19a35a;--green-soft:#e3f4ea;--shadow:0 1px 2px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.05);--font:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-@media(prefers-color-scheme:dark){:root{--bg:#111214;--surface:#1b1c1f;--text:#f1f1f3;--muted:#a3a5aa;--border:#2e2f34;--solid:#f1f1f3;--on-solid:#17181a;--green:#2cc275;--green-soft:#143426;--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.3)}}
+:root{color-scheme:light dark;--bg:#f4f4f5;--surface:#ffffff;--text:#1d1e21;--muted:#64666b;--border:#e3e3e7;--solid:#232428;--on-solid:#ffffff;--green:#19a35a;--shadow:0 1px 2px rgba(16,24,40,.07),0 6px 18px rgba(16,24,40,.05);--font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+@media(prefers-color-scheme:dark){:root{--bg:#111214;--surface:#232428;--text:#f1f1f3;--muted:#a3a5aa;--border:#2e2f34;--solid:#f1f1f3;--on-solid:#17181a;--green:#2cc275;--shadow:none}}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;font-family:var(--font);font-size:18px;line-height:1.6;color:var(--text);background:var(--bg)}
+body{margin:0;font-family:var(--font);font-size:18px;line-height:1.65;color:var(--text);background:var(--bg)}
 a{color:var(--text);text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px}
 a:hover{text-decoration-thickness:3px}
 :focus-visible{outline:3px solid var(--text);outline-offset:3px;border-radius:8px}
 .skip{position:absolute;left:-999px;top:8px;background:var(--solid);color:var(--on-solid);padding:10px 16px;border-radius:999px;z-index:10;text-decoration:none}
 .skip:focus{left:8px}
-.wrap{max-width:760px;margin:0 auto;padding:0 20px}
-header.top .wrap{max-width:1120px;display:flex;align-items:center;justify-content:space-between;gap:16px;padding-top:18px;padding-bottom:18px}
+.wrap{max-width:1120px;margin:0 auto;padding:0 28px}
+header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-top:20px;padding-bottom:20px}
 .brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:1.1rem;letter-spacing:-.01em;color:var(--text);text-decoration:none;white-space:nowrap}
 .brand img{width:38px;height:38px;border-radius:10px;display:block}
-.btn{display:inline-block;padding:11px 20px;border-radius:999px;background:var(--solid);color:var(--on-solid);font-weight:700;font-size:.95rem;text-decoration:none;white-space:nowrap;transition:opacity .15s}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:12px 22px;border-radius:999px;background:var(--solid);color:var(--on-solid);font-weight:700;font-size:.98rem;text-decoration:none;white-space:nowrap;transition:opacity .15s}
 .btn:hover{opacity:.88;text-decoration:none}
-main{padding:40px 0 72px}
-h1{font-size:clamp(2.5rem,8vw,4rem);font-weight:800;letter-spacing:-.035em;line-height:1.03;margin:0 0 12px}
-.meta{color:var(--muted);margin:0 0 28px;font-size:1.05rem}
-.short{display:flex;gap:14px;align-items:flex-start;background:var(--surface);border:1px solid var(--border);border-radius:24px;box-shadow:var(--shadow);padding:20px 22px;margin:0 0 14px}
-.short .tick{flex:none;width:30px;height:30px;border-radius:50%;background:var(--green-soft);color:var(--green);display:grid;place-items:center;margin-top:1px}
-.short .tick svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
-.short p{margin:0;font-weight:600}
-section.card{background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:24px 26px;margin:14px 0 0}
-h2{font-size:1.3rem;font-weight:800;letter-spacing:-.015em;line-height:1.2;margin:0 0 10px}
-p{margin:0 0 14px}
-section.card>:last-child{margin-bottom:0}
-ul{margin:0 0 14px;padding-left:1.25em}
-li{margin:6px 0}
-footer{border-top:1px solid var(--border);color:var(--muted);padding:28px 0 36px;font-size:.95rem}
-footer .wrap{max-width:1120px;display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:space-between}
+.btn.alt{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.btn.small{padding:10px 18px;font-size:.95rem}
+.col{max-width:720px}
+.hero{padding:clamp(36px,7vw,84px) 0 clamp(8px,2vw,20px)}
+h1{font-size:clamp(2.8rem,9vw,5rem);font-weight:800;letter-spacing:-.04em;line-height:1.0;margin:0 0 22px}
+.lead{font-size:clamp(1.15rem,2.6vw,1.4rem);line-height:1.5;color:var(--muted);margin:0 0 26px;max-width:30em}
+.chips,.actions{display:flex;flex-wrap:wrap;gap:10px;margin:0;padding:0;list-style:none}
+.chip{display:inline-flex;align-items:center;gap:9px;background:var(--surface);border-radius:999px;padding:10px 18px 10px 14px;font-weight:600;font-size:.98rem;box-shadow:var(--shadow)}
+.chip svg{width:18px;height:18px;flex:none;fill:none;stroke:var(--green);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.meta{color:var(--muted);font-size:.95rem;margin:22px 0 0}
+.body{padding:clamp(20px,4vw,44px) 0 72px}
+section.sec{border-top:1px solid var(--border);padding:30px 0 10px;margin-top:26px}
+section.sec:first-child{margin-top:0}
+h2{font-size:clamp(1.45rem,3.6vw,1.9rem);font-weight:800;letter-spacing:-.025em;line-height:1.15;margin:0 0 12px}
+p{margin:0 0 16px}
+section.sec>:last-child{margin-bottom:0}
+ul{margin:0 0 16px;padding-left:1.25em}
+li{margin:7px 0}
+footer{border-top:1px solid var(--border);color:var(--muted);padding:28px 0 40px;font-size:.95rem}
+footer .wrap{display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:space-between}
 footer a{color:var(--text)}
-@media(max-width:520px){body{font-size:17px}.btn{padding:10px 16px}section.card{padding:20px 20px}.short{padding:18px}}
-@media(max-width:380px){header.top .wrap{flex-wrap:wrap;gap:10px 12px}.brand{font-size:1rem;gap:10px}.brand img{width:34px;height:34px}.btn{padding:9px 14px;font-size:.9rem}}
+@media(max-width:520px){body{font-size:17px}.wrap{padding:0 20px}.btn.small{padding:9px 14px;font-size:.9rem}}
+@media(max-width:380px){header.top .wrap{flex-wrap:wrap;gap:10px 12px}.brand{font-size:1rem;gap:10px}.brand img{width:34px;height:34px}}
 @media(prefers-reduced-motion:reduce){.btn{transition:none}}
 </style>
 </head>
@@ -51,65 +57,74 @@ footer a{color:var(--text)}
 <a class="skip" href="#main">Skip to the content</a>
 <header class="top">
   <div class="wrap">
-    <a class="brand" href="./"><img src="img/icon-192.png" alt="" width="38" height="38">TapBudget</a>
-    <a class="btn" href="../">Open TapBudget</a>
+    <a class="brand" href="./"><img src="app-icon.png" alt="" width="38" height="38">TapBudget</a>
+    <a class="btn small" href="../">Open TapBudget</a>
   </div>
 </header>
 <main id="main">
 <div class="wrap">
+<div class="hero col">
 <h1>Privacy policy</h1>
-<p class="meta">Effective November 16, 2026. App by TapBudget.</p>
-<div class="short"><span class="tick" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></span><p>TapBudget does not collect your data. Your budgets stay on your device, and there is no account.</p></div>
-
-<section class="card">
+<p class="lead">TapBudget does not collect your data. Your budgets stay on your device, and there is no account.</p>
+<ul class="chips"><li class="chip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>Saved on your phone</li><li class="chip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>No account</li><li class="chip"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12.5l4.5 4.5L19 7"/></svg>No tracking</li></ul>
+<p class="meta">Effective November 28, 2026. Covers TapBudget for iPhone and the web version. App by TapBudget.</p>
+</div>
+<div class="body col">
+<section class="sec">
 <h2>What the app stores</h2>
-<p>The app stores what you enter: budget names, bill and income names, amounts, due days, paid dates, the amounts you spent, loan and credit card balances, your starting balance and the chequing balances you type in. It also stores your settings, such as colors, light or dark mode, whether bill reminders are on and whether the lock is on. All of this stays on your device. The iPhone app also keeps a second copy in its own storage on the device, so a budget can be restored if the phone clears the first one.</p>
+<p>TapBudget for iPhone stores what you enter: budget names, bill and income names, amounts, due days, paid dates, the amounts you spend, loan and credit card balances, your starting balance and the chequing balances you type in. It also stores your settings, such as colors, the look you pick, light or dark mode, Easy mode, and a wallpaper picture if you choose one.</p>
+<p>All of this is saved in the app’s own storage on your iPhone. Like other app data, it can be included in your iPhone backup, whether that goes to iCloud or to a computer. That backup is yours, under your Apple settings, and we cannot see it.</p>
 </section>
 
-<section class="card">
+<section class="sec">
 <h2>What we collect</h2>
-<p>Nothing. There is no sign-up and no login. The app has no analytics, no advertising and no tracking. It does not send your budgets to us or to anyone else.</p>
+<p>Nothing. There is no sign-up and no login. TapBudget for iPhone has no analytics, no advertising and no tracking, and it does not connect to the internet to do its work. It does not send your budgets to us or to anyone else.</p>
+<p>The links in the app to this privacy policy and the support page open in your browser.</p>
 </section>
 
-<section class="card">
-<h2>Bill reminders</h2>
-<p>If you turn on reminders, the app asks iOS for permission to send notifications. Reminders are scheduled on your device and delivered by iOS. They are not sent from a server. They show the bill name, not the amount.</p>
+<section class="sec">
+<h2>Photos for your wallpaper</h2>
+<p>If you choose a wallpaper, iOS shows its own photo picker. TapBudget gets only the picture you pick, and never sees the rest of your photos. It shrinks the picture and keeps a copy in its own storage. You can remove it at any time in Wallpaper and colors. Wallpaper pictures are not part of backup files.</p>
 </section>
 
-<section class="card">
-<h2>Face ID lock</h2>
-<p>If you turn on the lock, the app asks iOS to check Face ID or your passcode. iOS does the check. The app never receives or stores your face data or fingerprint.</p>
+<section class="sec">
+<h2>Backups and sharing</h2>
+<p>You choose when to save a backup file. The iPhone share sheet lets you save it to Files, send it with AirDrop or pass it on another way. The file holds your budget as readable text: the items, every payment with its date, loans and cards, and balances. Anyone who has the file can read it, so keep it somewhere safe.</p>
+<p>Restoring reads only the file you pick. We do not see backup files.</p>
 </section>
 
-<section class="card">
-<h2>Sharing and backups</h2>
-<p>You choose when to share or save a copy. A share link contains the budget itself, and your paid history too if you pick that option. Anyone who has the link can read it, so send it only to people you trust. A backup file is saved where you choose. We do not see links or backup files.</p>
-</section>
-
-<section class="card">
+<section class="sec">
 <h2>The web version</h2>
-<p>The same app also runs in a web browser at tapbudget-ashy.vercel.app. That page is hosted by Vercel, which may keep its own technical logs, such as your IP address, under Vercel's own policy. The app does not send your budgets there.</p>
+<p>TapBudget also runs in a web browser at tapbudget-ashy.vercel.app. That page is hosted by Vercel, which may keep its own technical logs, such as your IP address, under Vercel’s own policy. The web version saves your budgets in your browser, on your device, and does not send them there.</p>
+<p>The web version can make a share link. The link contains the budget itself, and your paid history too if you pick that option. Anyone who has the link can read it, so send it only to people you trust. The iPhone app and the web version each keep their own data. They do not sync.</p>
 </section>
 
-<section class="card">
+<section class="sec">
+<h2>Testing with TestFlight</h2>
+<p>If you try TapBudget through Apple’s TestFlight, Apple runs TestFlight. Depending on how you join, Apple may share details such as your email address with the developer, along with any feedback or crash reports you choose to send. That is covered by Apple’s terms. TapBudget itself still collects nothing.</p>
+</section>
+
+<section class="sec">
 <h2>Deleting your data</h2>
-<p>In the app, open the menu, choose Manage budgets and delete a budget. Deleting the app removes its data from your device. In a browser, clearing the site's data does the same. Links and backup files you shared stay with the people who have them.</p>
+<p>In the iPhone app, open the menu, choose Manage budgets and delete a budget. To remove a wallpaper, use Wallpaper and colors. Deleting the app removes its data from your iPhone. An older iPhone backup you made may still hold a copy until you delete that backup.</p>
+<p>In a browser, clearing the site’s data does the same. Backup files and links you shared stay with the people who have them.</p>
 </section>
 
-<section class="card">
+<section class="sec">
 <h2>Children</h2>
 <p>The app is not aimed at children, and it collects no personal information from anyone.</p>
 </section>
 
-<section class="card">
+<section class="sec">
 <h2>Changes to this policy</h2>
 <p>If this policy changes, the new version is posted on this page with a new date.</p>
 </section>
 
-<section class="card">
+<section class="sec">
 <h2>Contact</h2>
-<p>Questions about privacy: tapbudget17@gmail.com</p>
+<p>Questions about privacy: <a href="mailto:tapbudget17@gmail.com">tapbudget17@gmail.com</a></p>
 </section>
+</div>
 </div>
 </main>
 <footer>

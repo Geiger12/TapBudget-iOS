@@ -4,46 +4,52 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Support | TapBudget</title>
-<meta name="description" content="Help with TapBudget: marking bills paid, moving a budget, reminders, Face ID lock and backups.">
+<meta name="description" content="Help with TapBudget: marking bills paid, backups and restoring, moving a budget, colors, Easy mode and the cash flow chart.">
 <meta name="color-scheme" content="light dark">
 <meta name="theme-color" content="#f4f4f5" media="(prefers-color-scheme: light)">
 <meta name="theme-color" content="#111214" media="(prefers-color-scheme: dark)">
-<link rel="icon" href="img/icon-192.png" type="image/png">
+<link rel="icon" href="app-icon.png" type="image/png">
+<link rel="apple-touch-icon" href="app-icon.png">
 <style>
-:root{color-scheme:light dark;--bg:#f4f4f5;--surface:#ffffff;--text:#1d1e21;--muted:#64666b;--border:#e7e7ea;--solid:#232428;--on-solid:#ffffff;--green:#19a35a;--green-soft:#e3f4ea;--shadow:0 1px 2px rgba(16,24,40,.06),0 8px 24px rgba(16,24,40,.05);--font:"Inter",system-ui,-apple-system,"Segoe UI",Roboto,Helvetica,Arial,sans-serif}
-@media(prefers-color-scheme:dark){:root{--bg:#111214;--surface:#1b1c1f;--text:#f1f1f3;--muted:#a3a5aa;--border:#2e2f34;--solid:#f1f1f3;--on-solid:#17181a;--green:#2cc275;--green-soft:#143426;--shadow:0 1px 2px rgba(0,0,0,.4),0 8px 24px rgba(0,0,0,.3)}}
+:root{color-scheme:light dark;--bg:#f4f4f5;--surface:#ffffff;--text:#1d1e21;--muted:#64666b;--border:#e3e3e7;--solid:#232428;--on-solid:#ffffff;--green:#19a35a;--shadow:0 1px 2px rgba(16,24,40,.07),0 6px 18px rgba(16,24,40,.05);--font:-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,Helvetica,Arial,sans-serif}
+@media(prefers-color-scheme:dark){:root{--bg:#111214;--surface:#232428;--text:#f1f1f3;--muted:#a3a5aa;--border:#2e2f34;--solid:#f1f1f3;--on-solid:#17181a;--green:#2cc275;--shadow:none}}
 *{box-sizing:border-box}
 html{-webkit-text-size-adjust:100%}
-body{margin:0;font-family:var(--font);font-size:18px;line-height:1.6;color:var(--text);background:var(--bg)}
+body{margin:0;font-family:var(--font);font-size:18px;line-height:1.65;color:var(--text);background:var(--bg)}
 a{color:var(--text);text-decoration:underline;text-decoration-thickness:2px;text-underline-offset:3px}
 a:hover{text-decoration-thickness:3px}
 :focus-visible{outline:3px solid var(--text);outline-offset:3px;border-radius:8px}
 .skip{position:absolute;left:-999px;top:8px;background:var(--solid);color:var(--on-solid);padding:10px 16px;border-radius:999px;z-index:10;text-decoration:none}
 .skip:focus{left:8px}
-.wrap{max-width:760px;margin:0 auto;padding:0 20px}
-header.top .wrap{max-width:1120px;display:flex;align-items:center;justify-content:space-between;gap:16px;padding-top:18px;padding-bottom:18px}
+.wrap{max-width:1120px;margin:0 auto;padding:0 28px}
+header.top .wrap{display:flex;align-items:center;justify-content:space-between;gap:16px;padding-top:20px;padding-bottom:20px}
 .brand{display:flex;align-items:center;gap:12px;font-weight:800;font-size:1.1rem;letter-spacing:-.01em;color:var(--text);text-decoration:none;white-space:nowrap}
 .brand img{width:38px;height:38px;border-radius:10px;display:block}
-.btn{display:inline-block;padding:11px 20px;border-radius:999px;background:var(--solid);color:var(--on-solid);font-weight:700;font-size:.95rem;text-decoration:none;white-space:nowrap;transition:opacity .15s}
+.btn{display:inline-flex;align-items:center;justify-content:center;padding:12px 22px;border-radius:999px;background:var(--solid);color:var(--on-solid);font-weight:700;font-size:.98rem;text-decoration:none;white-space:nowrap;transition:opacity .15s}
 .btn:hover{opacity:.88;text-decoration:none}
-main{padding:40px 0 72px}
-h1{font-size:clamp(2.5rem,8vw,4rem);font-weight:800;letter-spacing:-.035em;line-height:1.03;margin:0 0 12px}
-.meta{color:var(--muted);margin:0 0 28px;font-size:1.05rem}
-.short{display:flex;gap:14px;align-items:flex-start;background:var(--surface);border:1px solid var(--border);border-radius:24px;box-shadow:var(--shadow);padding:20px 22px;margin:0 0 14px}
-.short .tick{flex:none;width:30px;height:30px;border-radius:50%;background:var(--green-soft);color:var(--green);display:grid;place-items:center;margin-top:1px}
-.short .tick svg{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
-.short p{margin:0;font-weight:600}
-section.card{background:var(--surface);border:1px solid var(--border);border-radius:22px;padding:24px 26px;margin:14px 0 0}
-h2{font-size:1.3rem;font-weight:800;letter-spacing:-.015em;line-height:1.2;margin:0 0 10px}
-p{margin:0 0 14px}
-section.card>:last-child{margin-bottom:0}
-ul{margin:0 0 14px;padding-left:1.25em}
-li{margin:6px 0}
-footer{border-top:1px solid var(--border);color:var(--muted);padding:28px 0 36px;font-size:.95rem}
-footer .wrap{max-width:1120px;display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:space-between}
+.btn.alt{background:var(--surface);color:var(--text);box-shadow:var(--shadow)}
+.btn.small{padding:10px 18px;font-size:.95rem}
+.col{max-width:720px}
+.hero{padding:clamp(36px,7vw,84px) 0 clamp(8px,2vw,20px)}
+h1{font-size:clamp(2.8rem,9vw,5rem);font-weight:800;letter-spacing:-.04em;line-height:1.0;margin:0 0 22px}
+.lead{font-size:clamp(1.15rem,2.6vw,1.4rem);line-height:1.5;color:var(--muted);margin:0 0 26px;max-width:30em}
+.chips,.actions{display:flex;flex-wrap:wrap;gap:10px;margin:0;padding:0;list-style:none}
+.chip{display:inline-flex;align-items:center;gap:9px;background:var(--surface);border-radius:999px;padding:10px 18px 10px 14px;font-weight:600;font-size:.98rem;box-shadow:var(--shadow)}
+.chip svg{width:18px;height:18px;flex:none;fill:none;stroke:var(--green);stroke-width:3;stroke-linecap:round;stroke-linejoin:round}
+.meta{color:var(--muted);font-size:.95rem;margin:22px 0 0}
+.body{padding:clamp(20px,4vw,44px) 0 72px}
+section.sec{border-top:1px solid var(--border);padding:30px 0 10px;margin-top:26px}
+section.sec:first-child{margin-top:0}
+h2{font-size:clamp(1.45rem,3.6vw,1.9rem);font-weight:800;letter-spacing:-.025em;line-height:1.15;margin:0 0 12px}
+p{margin:0 0 16px}
+section.sec>:last-child{margin-bottom:0}
+ul{margin:0 0 16px;padding-left:1.25em}
+li{margin:7px 0}
+footer{border-top:1px solid var(--border);color:var(--muted);padding:28px 0 40px;font-size:.95rem}
+footer .wrap{display:flex;flex-wrap:wrap;gap:12px 28px;justify-content:space-between}
 footer a{color:var(--text)}
-@media(max-width:520px){body{font-size:17px}.btn{padding:10px 16px}section.card{padding:20px 20px}.short{padding:18px}}
-@media(max-width:380px){header.top .wrap{flex-wrap:wrap;gap:10px 12px}.brand{font-size:1rem;gap:10px}.brand img{width:34px;height:34px}.btn{padding:9px 14px;font-size:.9rem}}
+@media(max-width:520px){body{font-size:17px}.wrap{padding:0 20px}.btn.small{padding:9px 14px;font-size:.9rem}}
+@media(max-width:380px){header.top .wrap{flex-wrap:wrap;gap:10px 12px}.brand{font-size:1rem;gap:10px}.brand img{width:34px;height:34px}}
 @media(prefers-reduced-motion:reduce){.btn{transition:none}}
 </style>
 </head>
@@ -51,60 +57,78 @@ footer a{color:var(--text)}
 <a class="skip" href="#main">Skip to the content</a>
 <header class="top">
   <div class="wrap">
-    <a class="brand" href="./"><img src="img/icon-192.png" alt="" width="38" height="38">TapBudget</a>
-    <a class="btn" href="../">Open TapBudget</a>
+    <a class="brand" href="./"><img src="app-icon.png" alt="" width="38" height="38">TapBudget</a>
+    <a class="btn small" href="../">Open TapBudget</a>
   </div>
 </header>
 <main id="main">
 <div class="wrap">
+<div class="hero col">
 <h1>Support</h1>
-<p class="meta">Help with TapBudget.</p>
-<div class="short"><span class="tick" aria-hidden="true"><svg viewBox="0 0 24 24"><path d="M5 12.5l4.5 4.5L19 7"/></svg></span><p>Need help? Email tapbudget17@gmail.com and say what you were doing and what you saw.</p></div>
-
-<section class="card">
+<p class="lead">Need help? Email <a href="mailto:tapbudget17@gmail.com">tapbudget17@gmail.com</a> and say what you were doing and what you saw.</p>
+<div class="actions"><a class="btn" href="mailto:tapbudget17@gmail.com">Email support</a><a class="btn alt" href="privacy.html">Privacy policy</a></div>
+<p class="meta">Help with TapBudget for iPhone and the web version.</p>
+</div>
+<div class="body col">
+<section class="sec">
 <h2>Mark a bill paid</h2>
-<p>Switch the bill on. Today's date fills in. If you paid on another day or a different amount, change the date and the amount right under the bill.</p>
+<p>Switch the bill on. Today’s date fills in. If you paid on another day or a different amount, change the date and the amount right under the bill.</p>
 </section>
 
-<section class="card">
-<h2>Move a budget to another phone</h2>
-<p>Nothing syncs on its own. To move a budget:</p>
-<ul>
-<li>Open the menu and choose Share this budget. Pick Share setup, or Share with paid history. Copy the link.</li>
-<li>On the other phone, open TapBudget, open the menu and choose Import a budget. Paste the link and confirm.</li>
-</ul>
-<p>On iPhone, copy the link rather than tapping it. A tapped link opens the web version in Safari, which keeps its own separate data. You can also save a backup file from the menu and restore it on the other phone.</p>
+<section class="sec">
+<h2>Install and update</h2>
+<p>TapBudget for iPhone is shared through TestFlight. Install the TestFlight app from the App Store, open your invite link, tap Accept, then Install. Updates arrive in the TestFlight app. A test version stops working after 90 days, so save a backup file before then and install the newer one.</p>
+<p>The web version needs no install. Open it in your browser and <a href="./#install">add it to your phone or computer</a>.</p>
 </section>
 
-<section class="card">
-<h2>Bill reminders</h2>
-<ul>
-<li>Open the menu and choose Turn on bill reminders. Allow notifications when iOS asks.</li>
-<li>You get a note at 9:00 the day before a bill is due and on the day it is due.</li>
-<li>Marking a bill paid removes its reminder. The example budget has no reminders.</li>
-<li>If nothing arrives, open the iPhone Settings app, choose TapBudget, then Notifications, and make sure they are allowed.</li>
-</ul>
-</section>
-
-<section class="card">
-<h2>Face ID lock</h2>
-<p>Open the menu and choose Turn on Face ID lock. The app asks for Face ID when it opens, and when you come back after a short time away. If Face ID does not work, use your phone passcode. Turning the lock off also needs Face ID or your passcode.</p>
-</section>
-
-<section class="card">
+<section class="sec">
 <h2>Keep a backup</h2>
-<p>Your budgets live only on your device. If you delete the app or reset the phone, they can be lost. Open the menu and choose Save a backup file now and then, and keep the file somewhere safe. To bring a budget back, choose Restore from a file.</p>
+<p>Your budgets live only on your device. If you delete the app or reset the phone, they can be lost. Save a backup file now and then, and keep it somewhere safe.</p>
+<ul>
+<li>Open the menu and choose <strong>Save a backup file</strong>. It holds everything in the budget, including every payment and its date.</li>
+<li>To bring a budget back, choose <strong>Restore from a file…</strong> and pick the file. TapBudget asks first: add it as a new budget, replace one, or merge into it.</li>
+<li>With more than one budget, <strong>Save all budgets in one file</strong> appears too. Only the iPhone app reads that file.</li>
+<li>No file handy? <strong>Paste a backup…</strong> takes the text of a backup instead.</li>
+</ul>
 </section>
 
-<section class="card">
-<h2>Change the colors</h2>
-<p>Open the menu and choose Wallpaper and colors. Pick a ready-made set or choose your own, add a wallpaper, and choose how switches look. Light, dark and automatic are in the menu too.</p>
+<section class="sec">
+<h2>Move a budget to another phone, or to the web</h2>
+<p>Nothing syncs on its own. Save a backup file on one device and restore it on the other. The same file works in the iPhone app and in the web version.</p>
+<p>Share links, from Share this budget, work only in the web version.</p>
 </section>
 
-<section class="card">
+<section class="sec">
+<h2>Change the colors and look</h2>
+<p>Open the menu and choose Wallpaper and colors. Add a wallpaper, choose a flat or glass look, pick a style for the three gauges on Overview, choose how switches look, and pick a ready-made set of colors or your own. Light, dark and automatic are in the menu too. Each budget keeps its own look.</p>
+</section>
+
+<section class="sec">
+<h2>Easy mode (big print)</h2>
+<p>Open the menu and choose Easy mode (big print) for large text, four big buttons and plain words. Choose Large or Extra large on the More tab. To go back, tap Use the full app on the More tab.</p>
+</section>
+
+<section class="sec">
+<h2>The cash flow chart</h2>
+<p>Tap Explore the cash flow on Overview, or open Insights. Drag to move, pinch to zoom (or use + and −), and tap a bar for details. If the chart looks too tall or too short, tap Scale and choose Auto, or a height such as $5,000 or $10,000.</p>
+<p>Type what your bank app shows under My chequing balance and tap Save my balance. The chart then shows whether you are ahead of or behind plan.</p>
+</section>
+
+<section class="sec">
+<h2>Loans and credit cards</h2>
+<p>In Settings, add a loan or card and choose the bill that pays it. When you switch that bill on, the balance goes down.</p>
+</section>
+
+<section class="sec">
+<h2>Report a problem</h2>
+<p>In TestFlight, take a screenshot, then tap Share Beta Feedback. Or email <a href="mailto:tapbudget17@gmail.com">tapbudget17@gmail.com</a> and say what you were doing and what you saw.</p>
+</section>
+
+<section class="sec">
 <h2>Delete your data</h2>
 <p>Open the menu, choose Manage budgets, and delete a budget. Deleting the app removes its data from your phone.</p>
 </section>
+</div>
 </div>
 </main>
 <footer>
